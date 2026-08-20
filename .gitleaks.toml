@@ -1,0 +1,42 @@
+# rinne/.gitleaks.toml
+title = "Rinne secret-scanning policy"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id          = "gcp-service-account-json"
+description = "GCP service account key file (the #1 GCP compromise vector)"
+regex       = '''"type"\s*:\s*"service_account"'''
+tags        = ["gcp", "key", "critical"]
+
+[[rules]]
+id          = "private-key-block"
+description = "PEM-encoded private key of any kind"
+regex       = '''-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY( BLOCK)?-----'''
+tags        = ["key", "critical"]
+
+[[rules]]
+id          = "google-api-key"
+description = "Google API key"
+regex       = '''\bAIza[0-9A-Za-z_\-]{35}\b'''
+tags        = ["gcp", "key"]
+
+[[rules]]
+id          = "slack-incoming-webhook"
+description = "Slack incoming webhook URL"
+regex       = '''https://hooks\.slack\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]{16,}'''
+tags        = ["slack", "webhook"]
+
+[[rules]]
+id          = "gcp-oauth-refresh-token"
+description = "Google OAuth refresh token"
+regex       = '''\b1//[0-9A-Za-z_\-]{30,}\b'''
+tags        = ["gcp", "token"]
+
+[allowlist]
+description = "Lockfiles only. Integrity hashes are high-entropy and are not secrets."
+paths = [
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)uv\.lock$''',
+]

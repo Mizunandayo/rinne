@@ -1,0 +1,61 @@
+# ────────────────────────
+Rinne_Blueprint.md
+*Blueprint*.md
+*blueprint*.md
+
+
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+credentials.json
+client_secret*.json
+service-account*.json
+*-sa-key.json
+gcp-key*.json
+application_default_credentials.json
+.secrets/
+
+
+# Node / TypeScript
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.eslintcache
+.vitest/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Local scratch and generated infra inputs
+tmp/
+scratch/
+*.local
+*.log

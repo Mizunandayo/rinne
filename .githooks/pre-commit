@@ -1,0 +1,50 @@
+#!/bin/sh
+# rinne/.githooks/pre-commit
+#
+# WHY sh AND NOT PowerShell:
+#   Git for Windows executes hooks with its own bundled sh.exe. A POSIX hook is
+#   therefore the portable choice — it runs identically on this Windows machine,
+#   on a Linux CI runner, and for anyone who clones the repo. You never type a
+#   bash command; git does. A .ps1 hook would need a shim and would break for
+#   any non-Windows clone.
+#
+# Enable once:  git config core.hooksPath .githooks
+set -eu
+
+fail() { printf '\npre-commit BLOCKED: %s\n\n' "$1" >&2; exit 1; }
+
+# ── 1. Refuse the private planning document, even if .gitignore is edited ──
+if git diff --cached --name-only --diff-filter=ACMR \
+   | grep -Eiq '(^|/)[^/]*blueprint[^/]*\.md$'; then
+  fail "a Blueprint document is staged. It carries prize targeting and competitive
+      analysis and must never enter history. Unstage it:  git restore --staged <file>"
+fi
+
+# ── 2. Refuse anything that looks like a service-account key ──
+if git diff --cached --name-only --diff-filter=ACMR \
+   | grep -Eiq '(service-account|sa-key|gcp-key|credentials)\.json$|\.(pem|p12|pfx|jks)$'; then
+  fail "a credential file is staged. Secrets belong in Google Secret Manager."
+fi
+
+# ── 3. gitleaks on the staged diff ──
+if ! command -v gitleaks >/dev/null 2>&1; then
+  fail "gitleaks is not installed, so this commit cannot be scanned.
+      This hook FAILS CLOSED on purpose — an unscanned commit is not an
+      acceptable outcome. Install it:
+        winget install --id Gitleaks.Gitleaks -e
+      then verify:
+        gitleaks version"
+fi
+
+# gitleaks 8.19 renamed `protect` to `git`. Support both without pinning a version.
+if gitleaks git --help >/dev/null 2>&1; then
+  SCAN_ARGS="git --staged"
+else
+  SCAN_ARGS="protect --staged"
+fi
+
+# shellcheck disable=SC2086
+gitleaks $SCAN_ARGS --redact --no-banner --config .gitleaks.toml \
+  || fail "gitleaks found a secret in the staged changes (values redacted above)."
+
+exit 0

@@ -1,0 +1,5 @@
+# rinne/.github/CODEOWNERS
+*                                   @Mizunandayo
+/.github/                           @Mizunandayo
+/infra/                             @Mizunandayo
+/packages/contracts/schemas/        @Mizunandayo

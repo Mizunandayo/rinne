@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Rinne">
+  <rect width="32" height="32" fill="#FFFFFF"/>
+  <circle cx="16" cy="16" r="10" fill="none" stroke="#111111" stroke-width="2.5"/>
+  <path d="M16 6 A10 10 0 0 1 26 16" fill="none" stroke="#111111" stroke-width="4" stroke-linecap="square"/>
+</svg>

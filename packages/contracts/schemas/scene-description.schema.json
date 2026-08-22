@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rinne.dev/schemas/scene-description.schema.json",
+  "title": "SceneDescription",
+  "description": "Portable, engine-agnostic physics scene. This is the single interchange format between the browser Rapier build, the headless Node Rapier build, and the Python agent, and it is also the exportable simulation artifact. Two hosts given the same document must produce the same result; anything that would let them diverge does not belong in this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sceneId", "units", "gravity", "ground", "body", "test", "solver"],
+  "properties": {
+    "schemaVersion": {
+      "description": "Bumped on any breaking change. A consumer that does not recognise the value must refuse the document rather than guess.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "sceneId": {
+      "description": "Stable identifier, also used as the Firestore document key.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+    },
+    "units": {
+      "description": "Declared explicitly so a unit mismatch is a validation error rather than a physics result that is wrong by a factor of a thousand.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["length", "mass"],
+      "properties": {
+        "length": { "type": "string", "enum": ["m"] },
+        "mass": { "type": "string", "enum": ["kg"] }
+      }
+    },
+    "gravity": { "$ref": "#/definitions/vec3" },
+    "ground": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["friction", "restitution"],
+      "properties": {
+        "friction": { "type": "number", "minimum": 0, "maximum": 2 },
+        "restitution": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "body": { "$ref": "#/definitions/rigidBody" },
+    "test": {
+      "description": "Which physics test the agent selected. Exactly one, chosen per §7 step 2.",
+      "oneOf": [
+        {
+          "title": "TipTest",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "pushHeightRatio", "forceNewtons", "directionDegrees"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["tip"] },
+            "pushHeightRatio": {
+              "description": "Height of the applied push as a fraction of the object's total height.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "forceNewtons": { "type": "number", "minimum": 0, "maximum": 5000 },
+            "directionDegrees": { "type": "number", "minimum": 0, "exclusiveMaximum": 360 },
+            "durationSeconds": { "type": "number", "minimum": 0, "maximum": 5 }
+          }
+        },
+        {
+          "title": "LoadTest",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "loadKilograms", "contactRadius"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["load"] },
+            "loadKilograms": { "type": "number", "minimum": 0, "maximum": 2000 },
+            "contactRadius": { "type": "number", "minimum": 0, "maximum": 5 },
+            "offsetFromCenter": { "$ref": "#/definitions/vec3" }
+          }
+        },
+        {
+          "title": "DropTest",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "dropHeightMeters"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["drop"] },
+            "dropHeightMeters": { "type": "number", "minimum": 0, "maximum": 20 },
+            "initialRotationDegrees": { "$ref": "#/definitions/vec3" }
+          }
+        }
+      ]
+    },
+    "solver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timestepSeconds", "maxSteps", "seed"],
+      "properties": {
+        "timestepSeconds": { "type": "number", "minimum": 0.0005, "maximum": 0.05 },
+        "maxSteps": {
+          "description": "Hard upper bound on simulation steps. §12 forbids unbounded loops, and this is where that rule is enforced for the physics path — the schema makes an unbounded simulation unrepresentable.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20000
+        },
+        "substeps": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "seed": {
+          "description": "Determinism seed. Both hosts must use it, or the shared-engine claim is unverifiable.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "provenance": {
+      "description": "Where the estimates in this document came from. Read by the confidence gate in §7 step 3.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string", "enum": ["agent", "cockpit", "refit", "fixture"] },
+        "estimatedBy": { "type": "string", "maxLength": 64 },
+        "reconstructionConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "materialConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "refitIteration": { "type": "integer", "minimum": 0, "maximum": 6 }
+      }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number", "minimum": -1000, "maximum": 1000 },
+        "y": { "type": "number", "minimum": -1000, "maximum": 1000 },
+        "z": { "type": "number", "minimum": -1000, "maximum": 1000 }
+      }
+    },
+    "meshRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "format"],
+      "properties": {
+        "uri": {
+          "description": "gs:// ONLY. The physics service fetches this URI, and this document is shaped by model output, so an unrestricted scheme here is a server-side request forgery primitive pointed at the metadata server. Restricting the scheme in the schema kills that class of attack at the contract boundary rather than in a handler someone might forget to write.",
+          "type": "string",
+          "pattern": "^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/.{1,512}$"
+        },
+        "format": { "type": "string", "enum": ["glb"] },
+        "sha256": {
+          "description": "Integrity check on the fetched asset. Optional on Day 3, required once the cockpit and the agent fetch the same mesh.",
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "rigidBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mesh", "massKilograms", "friction", "restitution", "initialTranslation"],
+      "properties": {
+        "mesh": { "$ref": "#/definitions/meshRef" },
+        "massKilograms": { "type": "number", "exclusiveMinimum": 0, "maximum": 5000 },
+        "centerOfMass": { "$ref": "#/definitions/vec3" },
+        "friction": { "type": "number", "minimum": 0, "maximum": 2 },
+        "restitution": { "type": "number", "minimum": 0, "maximum": 1 },
+        "linearDamping": { "type": "number", "minimum": 0, "maximum": 10 },
+        "angularDamping": { "type": "number", "minimum": 0, "maximum": 10 },
+        "initialTranslation": { "$ref": "#/definitions/vec3" },
+        "initialRotationDegrees": { "$ref": "#/definitions/vec3" }
+      }
+    }
+  }
+}

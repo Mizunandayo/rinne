@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rinne.dev/schemas/health.schema.json",
+  "title": "HealthReport",
+  "description": "Uniform liveness and readiness payload returned by every Rinne service. The web service's manifest page renders this, and smoke-test.ps1 asserts against it, so the shape is a contract and not a convenience.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["service", "status", "version", "checkedAt"],
+  "properties": {
+    "service": {
+      "description": "Which Rinne service produced this report.",
+      "type": "string",
+      "enum": ["web", "physics", "agent", "reconstruction"]
+    },
+    "status": {
+      "description": "ok: fully serving. degraded: serving with a failed non-critical dependency. down: not serving.",
+      "type": "string",
+      "enum": ["ok", "degraded", "down"]
+    },
+    "version": {
+      "description": "Build identifier. Set from the image tag at deploy time.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "checkedAt": {
+      "description": "RFC 3339 timestamp of this check, produced at request time and never cached.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "description": "Cloud Run revision name, from the K_REVISION environment variable.",
+      "type": "string",
+      "maxLength": 128
+    },
+    "region": {
+      "description": "Deployment region, for confirming the asia-southeast1 decision holds in production.",
+      "type": "string",
+      "maxLength": 32
+    },
+    "detail": {
+      "description": "Short operator-facing note. Never contains a stack trace, an internal hostname, or a credential.",
+      "type": "string",
+      "maxLength": 256
+    },
+    "dependencies": {
+      "description": "Downstream checks this service performed. Bounded so a compromised or buggy downstream cannot inflate a response.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "status": { "type": "string", "enum": ["ok", "degraded", "down"] },
+          "latencyMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
+          "detail": { "type": "string", "maxLength": 256 }
+        }
+      }
+    }
+  }
+}

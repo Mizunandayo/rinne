@@ -1,0 +1,34 @@
+{
+  "name": "rinne",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rinne — an agent that knows when it doesn't know, and asks.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22.11.0 <23.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "contracts:generate": "pnpm --filter @rinne/contracts run generate:ts",
+    "contracts:check": "pnpm --filter @rinne/contracts run generate:check",
+    "contracts:build": "pnpm --filter @rinne/contracts run build",
+    "build": "pnpm run contracts:build && pnpm --filter @rinne/web --filter @rinne/physics run build",
+    "dev:web": "pnpm --filter @rinne/web run dev",
+    "dev:physics": "pnpm --filter @rinne/physics run dev",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm run contracts:build && pnpm -r run typecheck",
+    "test": "pnpm run contracts:build && pnpm -r run test",
+    "audit": "pnpm audit --audit-level=high",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.4.2",
+    "typescript": "5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": []
+  }
+}

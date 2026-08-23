@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #   docker build -f services/agent/Dockerfile -t rinne-agent:local .
 
-FROM python:3.12.14-slim-bookworm AS build
+FROM python:3.14.7-slim-bookworm AS build
 # uv arrives as a PINNED BINARY rather than via the combined uv+python image.
 # Two reasons, both learned the hard way:
 #   1. uv.lock is written at revision 3 by uv 0.10.x. Older uv releases cannot
@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # --frozen: install exactly what uv.lock says, or fail. Never resolve at
 # build time — a resolver that can move is a supply chain that can move.
-FROM python:3.12.14-slim-bookworm AS runtime
+FROM python:3.14.7-slim-bookworm AS runtime
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

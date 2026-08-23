@@ -2,8 +2,6 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { SettlingLoader } from "@/components/SettlingLoader";
 
-
-
 export default function LandingPage() {
   return (
     <main id="main" className="rinne-shell rinne-landing">
@@ -13,8 +11,8 @@ export default function LandingPage() {
         <h1 className="rinne-wordmark">Rinne</h1>
 
         <p className="rinne-lede">
-          An agent that reviews object scans for physical instability — and knows when to
-          stop and ask a human.
+          An agent that reviews object scans for physical instability — and knows when to stop and
+          ask a human.
         </p>
 
         <div className="rinne-landing-motion">

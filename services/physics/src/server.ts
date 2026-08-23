@@ -2,7 +2,6 @@ import { buildApp } from "./app.js";
 import { loadEnv } from "./config.js";
 import { initPhysics, selfTest } from "./physics/engine.js";
 
-
 async function main(): Promise<void> {
   const env = loadEnv();
 

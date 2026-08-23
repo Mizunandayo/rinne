@@ -60,7 +60,7 @@ export function getServerEnv(): ServerEnv {
       .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
       .join("\n");
 
-  throw new Error(
+    throw new Error(
       `services/web: invalid environment. Refusing to start.\n${issues}\n` +
         `See .env.example for the full set.`,
     );

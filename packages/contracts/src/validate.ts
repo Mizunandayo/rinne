@@ -1,4 +1,3 @@
-
 import _Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import _addFormats from "ajv-formats";
 
@@ -38,7 +37,9 @@ addFormats(ajv);
 
 function describe(errors: ErrorObject[] | null | undefined): string[] {
   if (!errors || errors.length === 0) return ["unknown validation failure"];
-  return errors.slice(0, 8).map((e) => `${e.instancePath === "" ? "/" : e.instancePath} ${e.message ?? ""}`.trim());
+  return errors
+    .slice(0, 8)
+    .map((e) => `${e.instancePath === "" ? "/" : e.instancePath} ${e.message ?? ""}`.trim());
 }
 
 /**

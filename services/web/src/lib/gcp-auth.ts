@@ -14,7 +14,6 @@ interface CachedToken {
 
 const cache = new Map<string, CachedToken>();
 
-
 function readExpiry(token: string): number | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -44,7 +43,7 @@ export async function getIdToken(audience: string): Promise<string | null> {
 
   if (!isCloudRun()) {
     // Local development: populate RINNE_DEV_ID_TOKEN from
-return env.RINNE_DEV_ID_TOKEN && env.RINNE_DEV_ID_TOKEN.length > 0
+    return env.RINNE_DEV_ID_TOKEN && env.RINNE_DEV_ID_TOKEN.length > 0
       ? env.RINNE_DEV_ID_TOKEN
       : null;
   }
@@ -83,9 +82,7 @@ return env.RINNE_DEV_ID_TOKEN && env.RINNE_DEV_ID_TOKEN.length > 0
     cache.set(audience, { token, expiresAtMs });
     return token;
   } catch {
-  console.error(
-      JSON.stringify({ severity: "ERROR", message: "metadata server unreachable" }),
-    );
+    console.error(JSON.stringify({ severity: "ERROR", message: "metadata server unreachable" }));
     return null;
   }
 }

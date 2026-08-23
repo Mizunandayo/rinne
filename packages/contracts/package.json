@@ -12,7 +12,10 @@
     },
     "./schemas/*": "./schemas/*"
   },
-  "files": ["dist", "schemas"],
+  "files": [
+    "dist",
+    "schemas"
+  ],
   "scripts": {
     "generate:ts": "node scripts/generate-ts.mjs",
     "generate:check": "node scripts/generate-ts.mjs --check",

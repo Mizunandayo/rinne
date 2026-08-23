@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { localHealthReport } from "@/lib/health";
 
-
 export const dynamic = "force-dynamic";
-
 
 export function GET(): NextResponse {
   return NextResponse.json(localHealthReport(), {

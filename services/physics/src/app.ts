@@ -10,7 +10,6 @@ export interface BuildAppOptions {
   readonly env?: Env;
 }
 
-
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const env = options.env ?? loadEnv();
   const isProduction = env.NODE_ENV === "production";
@@ -70,7 +69,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   await app.register(healthRoutes(env));
-
 
   app.setErrorHandler((error: unknown, request, reply) => {
     // Fastify 5.12 types the error handler's first argument as `unknown` rather

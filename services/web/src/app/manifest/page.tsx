@@ -12,7 +12,10 @@ export const revalidate = 0;
 
 export default async function ManifestPage() {
   const outcomes = await probeAll();
-  const checkedAt = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  const checkedAt = new Date()
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, " UTC");
   const allLive = outcomes.every((o) => o.kind === "reached" && o.report.status === "ok");
 
   return (
@@ -23,8 +26,8 @@ export default async function ManifestPage() {
         <p className="rinne-manifest-lede">
           Three independently deployable services in asia-southeast1. This page is public;
           rinne-physics and rinne-agent are not. Their status below was fetched with an
-          IAM-authenticated, audience-scoped ID token minted from the Cloud Run metadata
-          server — no service-account key exists anywhere in this system.
+          IAM-authenticated, audience-scoped ID token minted from the Cloud Run metadata server — no
+          service-account key exists anywhere in this system.
         </p>
         <p className="rinne-caption">{`Checked at ${checkedAt}`}</p>
       </header>
@@ -39,8 +42,8 @@ export default async function ManifestPage() {
         <footer className="rinne-manifest-foot rinne-enter">
           <ShieldCheck size={22} strokeWidth={2.25} aria-hidden="true" />
           <p>
-            All three services reachable. Private services answered an authenticated call;
-            an unauthenticated call to either returns 403.
+            All three services reachable. Private services answered an authenticated call; an
+            unauthenticated call to either returns 403.
           </p>
         </footer>
       ) : null}

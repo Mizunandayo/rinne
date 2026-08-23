@@ -1,10 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-
 function buildCsp(nonce: string, isDev: boolean): string {
   const directives: Array<[string, string[]]> = [
     ["default-src", ["'self'"]],
-   [
+    [
       "script-src",
       [
         "'self'",
@@ -16,7 +15,6 @@ function buildCsp(nonce: string, isDev: boolean): string {
     ],
 
     ["style-src", ["'self'", "'unsafe-inline'"]],
-
 
     ["font-src", ["'self'"]],
 
@@ -52,7 +50,7 @@ export function middleware(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-   {
+    {
       source: "/((?!_next/static|_next/image|favicon.svg).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },

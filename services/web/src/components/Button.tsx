@@ -9,7 +9,6 @@ interface ButtonProps extends ComponentPropsWithoutRef<"button"> {
   readonly children: ReactNode;
 }
 
-
 export function Button({
   variant = "primary",
   icon: Icon,

@@ -49,7 +49,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-
       - name: Install
         run: pnpm install --frozen-lockfile
 
@@ -91,7 +90,6 @@ jobs:
           version: "0.5.14"
           enable-cache: true
           cache-dependency-glob: "services/agent/uv.lock"
-
 
       - name: Install
         run: uv sync --locked --all-groups
@@ -176,7 +174,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-
           fetch-depth: 0
           persist-credentials: false
 
@@ -185,7 +182,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
-
 
       - name: Assert the private blueprint is absent from history
         run: |
@@ -211,7 +207,6 @@ jobs:
           persist-credentials: false
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
 
       - name: Build ${{ matrix.service }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6

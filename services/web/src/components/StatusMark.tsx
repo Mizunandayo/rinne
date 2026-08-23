@@ -8,7 +8,6 @@ interface StatusMarkProps {
   readonly label: string;
 }
 
-
 const PRESENTATION = {
   ok: { Icon: CircleCheck, word: "Live", fill: "solid" },
   degraded: { Icon: TriangleAlert, word: "Degraded", fill: "half" },

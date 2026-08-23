@@ -3,8 +3,6 @@ import { healthSchema, toRouteSchema, type HealthReport } from "@rinne/contracts
 import { isReady, lastResult, initFailureReason, rapierVersion } from "../physics/engine.js";
 import type { Env } from "../config.js";
 
-
-
 export function healthRoutes(env: Env): FastifyPluginAsync {
   const responseSchema = toRouteSchema(healthSchema);
 

@@ -43,11 +43,15 @@ export function ServiceCard({ outcome }: { readonly outcome: ProbeOutcome }) {
         </div>
         <div>
           <dt className="rinne-caption">Revision</dt>
-          <dd>{outcome.kind === "reached" ? (outcome.report.revision ?? "local") : "Not reported"}</dd>
+          <dd>
+            {outcome.kind === "reached" ? (outcome.report.revision ?? "local") : "Not reported"}
+          </dd>
         </div>
         <div>
           <dt className="rinne-caption">Region</dt>
-          <dd>{outcome.kind === "reached" ? (outcome.report.region ?? "unset") : "Not reported"}</dd>
+          <dd>
+            {outcome.kind === "reached" ? (outcome.report.region ?? "unset") : "Not reported"}
+          </dd>
         </div>
         <div>
           <dt className="rinne-caption">Round trip</dt>

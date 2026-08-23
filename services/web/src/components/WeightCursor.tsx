@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 
-
 const STIFFNESS = 420;
 const DAMPING = 28;
 const MASS = 1;
@@ -34,7 +33,7 @@ export function WeightCursor({ nonce }: { readonly nonce?: string }) {
       tx = event.clientX;
       ty = event.clientY;
 
- const hovered = document
+      const hovered = document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest<HTMLElement>("[data-magnetic]");
 

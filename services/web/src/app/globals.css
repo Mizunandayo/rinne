@@ -7,7 +7,7 @@
 :root {
   /* Surfaces */
   --rinne-bg: #ffffff;
-  --rinne-panel: #f5f5f5;      /* background only — never text */
+  --rinne-panel: #f5f5f5; /* background only — never text */
   --rinne-viewer: #111111;
 
   /* Ink — only two values exist in the product */
@@ -17,14 +17,14 @@
   /* Structure */
   --rinne-border: #e0e0e0;
   --rinne-border-strong: #111111;
-  --rinne-disabled: #c4c4c4;   /* fill/border only — never text */
+  --rinne-disabled: #c4c4c4; /* fill/border only — never text */
 
   /* Action */
   --rinne-action: #000000;
 
   /* Semantic — each used once. Status/job/queue state stays monochrome. */
-  --rinne-hazard: #d32f2f;     /* real detected physical instability */
-  --rinne-verified: #2e7d32;   /* confirmed-accurate prediction */
+  --rinne-hazard: #d32f2f; /* real detected physical instability */
+  --rinne-verified: #2e7d32; /* confirmed-accurate prediction */
 
   /* Type scale — nothing below 0.875rem */
   --rinne-text-display: 3rem;
@@ -95,18 +95,36 @@ body {
   font-feature-settings: "tnum" 1;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-weight: var(--rinne-weight-semibold);
   line-height: 1.2;
   letter-spacing: -0.015em;
   color: var(--rinne-ink);
 }
 
-h1 { font-size: var(--rinne-text-display); font-weight: var(--rinne-weight-bold); }
-h2 { font-size: var(--rinne-text-title); }
-h3 { font-size: var(--rinne-text-heading); }
+h1 {
+  font-size: var(--rinne-text-display);
+  font-weight: var(--rinne-weight-bold);
+}
+h2 {
+  font-size: var(--rinne-text-title);
+}
+h3 {
+  font-size: var(--rinne-text-heading);
+}
 
-p, li, dd, dt, td, th, label, span, div {
+p,
+li,
+dd,
+dt,
+td,
+th,
+label,
+span,
+div {
   color: var(--rinne-ink);
 }
 
@@ -143,20 +161,52 @@ button:disabled,
 
 /* Restitution bounce, e=0.45, drop height 28px. Keyframe % = bounce times / 620ms total. */
 @keyframes rinne-drop-settle {
-  0%    { transform: translateY(-28px)   scaleY(1);    animation-timing-function: var(--rinne-ease-fall); }
-  38.5% { transform: translateY(0)       scaleY(0.74); animation-timing-function: var(--rinne-ease-rise); }
-  42%   { transform: translateY(-1.5px)  scaleY(1.05); animation-timing-function: var(--rinne-ease-rise); }
-  55.8% { transform: translateY(-5.67px) scaleY(1);    animation-timing-function: var(--rinne-ease-fall); }
-  73%   { transform: translateY(0)       scaleY(0.86); animation-timing-function: var(--rinne-ease-rise); }
-  80.8% { transform: translateY(-1.15px) scaleY(1);    animation-timing-function: var(--rinne-ease-fall); }
-  88.5% { transform: translateY(0)       scaleY(0.95); animation-timing-function: var(--rinne-ease-rise); }
-  92.9% { transform: translateY(-0.23px) scaleY(1);    animation-timing-function: var(--rinne-ease-fall); }
-  100%  { transform: translateY(0)       scaleY(1); }
+  0% {
+    transform: translateY(-28px) scaleY(1);
+    animation-timing-function: var(--rinne-ease-fall);
+  }
+  38.5% {
+    transform: translateY(0) scaleY(0.74);
+    animation-timing-function: var(--rinne-ease-rise);
+  }
+  42% {
+    transform: translateY(-1.5px) scaleY(1.05);
+    animation-timing-function: var(--rinne-ease-rise);
+  }
+  55.8% {
+    transform: translateY(-5.67px) scaleY(1);
+    animation-timing-function: var(--rinne-ease-fall);
+  }
+  73% {
+    transform: translateY(0) scaleY(0.86);
+    animation-timing-function: var(--rinne-ease-rise);
+  }
+  80.8% {
+    transform: translateY(-1.15px) scaleY(1);
+    animation-timing-function: var(--rinne-ease-fall);
+  }
+  88.5% {
+    transform: translateY(0) scaleY(0.95);
+    animation-timing-function: var(--rinne-ease-rise);
+  }
+  92.9% {
+    transform: translateY(-0.23px) scaleY(1);
+    animation-timing-function: var(--rinne-ease-fall);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 @keyframes rinne-settle-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .rinne-enter {
@@ -277,14 +327,14 @@ button:disabled,
   flex: none;
 }
 
-.rinne-status[data-fill="solid"]  .rinne-status-mark { background-color: var(--rinne-ink); }
-.rinne-status[data-fill="hollow"] .rinne-status-mark { background-color: transparent; }
-.rinne-status[data-fill="half"]   .rinne-status-mark {
-  background-image: linear-gradient(
-    135deg,
-    var(--rinne-ink) 0 50%,
-    transparent 50% 100%
-  );
+.rinne-status[data-fill="solid"] .rinne-status-mark {
+  background-color: var(--rinne-ink);
+}
+.rinne-status[data-fill="hollow"] .rinne-status-mark {
+  background-color: transparent;
+}
+.rinne-status[data-fill="half"] .rinne-status-mark {
+  background-image: linear-gradient(135deg, var(--rinne-ink) 0 50%, transparent 50% 100%);
 }
 
 .rinne-visually-hidden {
@@ -299,8 +349,6 @@ button:disabled,
   border: 0;
 }
 
-
-
 .rinne-card {
   display: flex;
   flex-direction: column;
@@ -308,7 +356,7 @@ button:disabled,
   padding: var(--rinne-space-6);
   background-color: var(--rinne-bg);
   border: 1px solid var(--rinne-border);
-  border-left: 4px solid var(--rinne-ink);   /* the spine reads at distance */
+  border-left: 4px solid var(--rinne-ink); /* the spine reads at distance */
   border-radius: var(--rinne-radius);
 }
 
@@ -342,8 +390,6 @@ button:disabled,
   border-left: 3px solid var(--rinne-ink);
 }
 
-
-
 .rinne-loader {
   display: inline-flex;
   align-items: center;
@@ -370,8 +416,14 @@ button:disabled,
 
 /* Staggered release. Three objects dropped at different moments read as
    physics; three in lockstep read as a spinner. */
-.rinne-loader-bar[data-index="1"] { animation-delay: 130ms; height: 26px; }
-.rinne-loader-bar[data-index="2"] { animation-delay: 265ms; height: 14px; }
+.rinne-loader-bar[data-index="1"] {
+  animation-delay: 130ms;
+  height: 26px;
+}
+.rinne-loader-bar[data-index="2"] {
+  animation-delay: 265ms;
+  height: 14px;
+}
 
 .rinne-loader-ground {
   position: absolute;
@@ -381,10 +433,6 @@ button:disabled,
   background-color: var(--rinne-ink);
 }
 
-
-
-
-
 .rinne-weight-cursor {
   position: fixed;
   top: 0;
@@ -393,7 +441,7 @@ button:disabled,
   height: 26px;
   border: 2px solid var(--rinne-ink);
   border-radius: 50%;
-  pointer-events: none;   /* must never intercept a click */
+  pointer-events: none; /* must never intercept a click */
   z-index: 90;
   will-change: transform;
 }
@@ -401,12 +449,10 @@ button:disabled,
 /* No coarse-pointer or reduced-motion user ever sees it, belt and braces
    alongside the guard in the effect. */
 @media (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .rinne-weight-cursor { display: none; }
+  .rinne-weight-cursor {
+    display: none;
+  }
 }
-
-
-
-
 
 .rinne-landing {
   display: grid;
@@ -442,10 +488,6 @@ button:disabled,
   border-bottom: 1px solid var(--rinne-border);
   width: 100%;
 }
-
-
-
-
 
 .rinne-manifest {
   display: flex;

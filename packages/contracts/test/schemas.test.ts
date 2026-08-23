@@ -128,8 +128,8 @@ describe("SceneDescription", () => {
   });
 
   it("rejects a zero mass", () => {
-    expect(() =>
-      assertScene({ ...scene, body: { ...scene.body, massKilograms: 0 } }),
-    ).toThrow(ContractViolationError);
+    expect(() => assertScene({ ...scene, body: { ...scene.body, massKilograms: 0 } })).toThrow(
+      ContractViolationError,
+    );
   });
 });

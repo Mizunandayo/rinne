@@ -4,7 +4,6 @@ import { headers } from "next/headers";
 import { WeightCursor } from "@/components/WeightCursor";
 import "./globals.css";
 
-
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
@@ -31,9 +30,7 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Read back the nonce set by middleware.ts. Any inline script added later
   // must carry it; without a nonce, CSP blocks it.
   const nonce = (await headers()).get("x-nonce") ?? undefined;

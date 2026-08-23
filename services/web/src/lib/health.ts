@@ -3,8 +3,6 @@ import { compileValidator, healthSchema, type HealthReport } from "@rinne/contra
 import { getServerEnv } from "../env";
 import { getIdToken } from "./gcp-auth";
 
-
-
 const assertHealthReport = compileValidator<HealthReport>(healthSchema);
 
 /** A health payload has no business being large. */
@@ -13,9 +11,18 @@ const MAX_RESPONSE_BYTES = 16 * 1024;
 export type ServiceName = HealthReport["service"];
 
 export type ProbeOutcome =
-  | { readonly kind: "reached"; readonly service: ServiceName; readonly report: HealthReport; readonly latencyMs: number }
-  | { readonly kind: "unreachable"; readonly service: ServiceName; readonly reason: UnreachableReason; readonly latencyMs: number };
-
+  | {
+      readonly kind: "reached";
+      readonly service: ServiceName;
+      readonly report: HealthReport;
+      readonly latencyMs: number;
+    }
+  | {
+      readonly kind: "unreachable";
+      readonly service: ServiceName;
+      readonly reason: UnreachableReason;
+      readonly latencyMs: number;
+    };
 
 export type UnreachableReason =
   | "timed out"
@@ -34,10 +41,7 @@ function classify(error: unknown): UnreachableReason {
   return "connection failed";
 }
 
-export async function probeService(
-  service: ServiceName,
-  baseUrl: string,
-): Promise<ProbeOutcome> {
+export async function probeService(service: ServiceName, baseUrl: string): Promise<ProbeOutcome> {
   const env = getServerEnv();
   const started = performance.now();
   const elapsed = (): number => Math.round(performance.now() - started);
@@ -61,9 +65,11 @@ export async function probeService(
 
     if (!response.ok) {
       const reason: UnreachableReason =
-        response.status === 401 ? "unauthorized"
-        : response.status === 403 ? "forbidden"
-        : "server error";
+        response.status === 401
+          ? "unauthorized"
+          : response.status === 403
+            ? "forbidden"
+            : "server error";
       return { kind: "unreachable", service, reason, latencyMs: elapsed() };
     }
 

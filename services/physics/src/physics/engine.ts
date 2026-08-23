@@ -1,22 +1,17 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 
-
 export interface SelfTestResult {
   readonly steps: number;
   readonly restingY: number;
   readonly durationMs: number;
 }
 
-
-const EXPECTED_RESTING_Y = 0.5; 
+const EXPECTED_RESTING_Y = 0.5;
 const TOLERANCE = 0.05;
-
 
 let initialized = false;
 let lastSelfTest: SelfTestResult | null = null;
 let initError: string | null = null;
-
-
 
 export function isReady(): boolean {
   return initialized && lastSelfTest !== null;
@@ -30,9 +25,6 @@ export function initFailureReason(): string | null {
   return initError;
 }
 
-
-
-
 /** Idempotent. Safe to call from both server startup and a test's beforeAll. */
 export async function initPhysics(): Promise<void> {
   if (initialized) return;
@@ -45,7 +37,6 @@ export async function initPhysics(): Promise<void> {
     throw new Error("Rapier WASM failed to initialise");
   }
 }
-
 
 export function selfTest(): SelfTestResult {
   if (!initialized) throw new Error("initPhysics() must be awaited before selfTest()");
@@ -84,7 +75,7 @@ export function selfTest(): SelfTestResult {
     lastSelfTest = { steps, restingY, durationMs };
     return lastSelfTest;
   } finally {
-     world.free();
+    world.free();
   }
 }
 

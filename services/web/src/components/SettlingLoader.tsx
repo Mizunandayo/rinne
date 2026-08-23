@@ -1,4 +1,3 @@
-
 export function SettlingLoader({ label = "Working" }: { readonly label?: string }) {
   return (
     <div className="rinne-loader" role="status" aria-live="polite">

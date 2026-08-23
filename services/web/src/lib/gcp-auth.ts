@@ -1,5 +1,5 @@
 import "server-only";
-import { getServerEnv, isCloudRun } from "../env.js";
+import { getServerEnv, isCloudRun } from "../env";
 
 const METADATA_IDENTITY_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity";

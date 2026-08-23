@@ -1,7 +1,7 @@
 import "server-only";
 import { compileValidator, healthSchema, type HealthReport } from "@rinne/contracts";
-import { getServerEnv } from "../env.js";
-import { getIdToken } from "./gcp-auth.js";
+import { getServerEnv } from "../env";
+import { getIdToken } from "./gcp-auth";
 
 
 

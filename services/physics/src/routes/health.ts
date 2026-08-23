@@ -16,6 +16,9 @@ export function healthRoutes(env: Env): FastifyPluginAsync {
     ...(env.K_REVISION !== undefined ? { revision: env.K_REVISION } : {}),
   });
 
+  // FastifyPluginAsync is typed as (instance, opts) => Promise<void>, so this
+  // function must be async even though registering routes awaits nothing.
+  // eslint-disable-next-line @typescript-eslint/require-await
   return async (app: FastifyInstance): Promise<void> => {
     app.get(
       "/healthz",
@@ -23,7 +26,7 @@ export function healthRoutes(env: Env): FastifyPluginAsync {
         schema: { response: { 200: responseSchema } },
         config: { rateLimit: false }, // probes must never be throttled
       },
-      async (): Promise<HealthReport> => ({ ...base(), status: "ok" }),
+      (): HealthReport => ({ ...base(), status: "ok" }),
     );
 
     app.get(

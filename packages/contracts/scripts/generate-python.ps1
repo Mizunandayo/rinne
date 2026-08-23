@@ -26,11 +26,23 @@ $scriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $contractsDir = Split-Path -Parent $scriptRoot
 $repoRoot     = Split-Path -Parent (Split-Path -Parent $contractsDir)
 $schemaDir    = Join-Path $contractsDir "schemas"
-$outDir       = Join-Path $repoRoot "services\agent\src\rinne_agent\contracts"
+# Forward slashes deliberately. PowerShell on Linux - which is what the CI
+# contracts-drift job runs on - does NOT treat \ as a path separator, so a
+# Windows-style path string creates ONE directory whose name contains literal
+# backslashes, and the drift check could then never pass.
+$outDir       = Join-Path $repoRoot "services/agent/src/rinne_agent/contracts"
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     throw "uv is not installed. Install it with:  winget install --id astral-sh.uv -e"
 }
+
+# Windows PowerShell 5.1 and Python both default file I/O to the system ANSI
+# codepage (cp1252 here). The schemas contain non-ASCII characters - the section
+# sign in "chosen per section 7 step 2" - so without this the generator emits cp1252
+# bytes that ruff, mypy and Python 3 all reject as invalid UTF-8. PYTHONUTF8=1
+# forces UTF-8 on every Python process uv spawns.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
@@ -68,6 +80,12 @@ Get-ChildItem -Path $schemaDir -Filter "*.schema.json" | Sort-Object Name | ForE
         --custom-file-header $header
 
     if ($LASTEXITCODE -ne 0) { throw "datamodel-codegen failed for $($_.Name)" }
+    # Normalise to UTF-8 without BOM and LF endings. Windows text-mode I/O emits
+    # CRLF, which would make the CI drift check fail forever against a Linux
+    # runner for a reason that has nothing to do with the schema.
+    $text = [System.IO.File]::ReadAllText($outFile, (New-Object System.Text.UTF8Encoding($false)))
+    $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($outFile, $text, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # Package marker, written deterministically so the drift check stays stable.

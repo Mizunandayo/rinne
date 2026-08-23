@@ -1,6 +1,19 @@
 
-import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
+import _Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
+import _addFormats from "ajv-formats";
+
+/**
+ * Ajv 8 and ajv-formats are CommonJS packages whose type declarations use
+ * `export default`. Under `module: NodeNext`, TypeScript models the default
+ * import of such a module as the module NAMESPACE rather than the value, so
+ * `new Ajv()` fails to typecheck with "has no construct signatures" even though
+ * it is correct at runtime: both packages do `module.exports = <the value>`,
+ * which is exactly what a default import from ESM receives.
+ *
+ * These casts are type-only. They change no emitted JavaScript.
+ */
+const Ajv = _Ajv as unknown as typeof _Ajv.default;
+const addFormats = _addFormats as unknown as typeof _addFormats.default;
 
 export class ContractViolationError extends Error {
   public readonly issues: readonly string[];

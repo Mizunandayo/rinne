@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { NextResponse, type NextRequest } from "next/server";
 
 
 function buildCsp(nonce: string, isDev: boolean): string {

@@ -1,0 +1,99 @@
+[project]
+name = "rinne-agent"
+version = "0.1.0"
+description = "Rinne agent service. FastAPI host for the ADK decision loop."
+requires-python = ">=3.12,<3.13"
+
+# Exact pins. A range plus a lockfile is still a range the moment anyone runs
+# `uv lock --upgrade`, and the reproducible-setup criterion is graded.
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "orjson==3.10.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.0",
+    "httpx==0.28.1",
+    "ruff==0.8.4",
+    "mypy==1.14.1",
+    "pip-audit==2.7.3",
+    "datamodel-code-generator==0.26.4",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rinne_agent"]
+
+# ── ruff: linter and formatter in one tool ────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+# Generated code is excluded from ruff ENTIRELY, not just from lint.
+# CI runs both `ruff format --check` and the contracts drift check. If ruff is
+# allowed to reformat generated files, those two gates deadlock permanently:
+# format them and the drift check fails against a fresh generation; leave them
+# and the format check fails. The generator's own output is the canonical form.
+extend-exclude = ["src/rinne_agent/contracts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import sorting
+    "N",         # naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # builtin shadowing
+    "C4",        # comprehensions
+    "T20",       # no print() — structured logging only, so Cloud Logging parses it
+    "SIM",       # simplification
+    "RUF",       # ruff-specific
+    "S",         # bandit security rules
+    "ASYNC",     # async correctness
+    "ANN",       # require annotations — the Python half of "no implicit any"
+]
+ignore = [
+    "ANN401",    # Any is occasionally correct at a boundary
+    "S101",      # assert is fine in tests; narrowed below
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**"                       = ["S101", "ANN201", "ANN001"]
+"src/rinne_agent/contracts/**"   = ["ALL"]      # generated
+
+[tool.ruff.lint.isort]
+known-first-party = ["rinne_agent"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+
+# ── mypy ──────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_explicit = false
+plugins = ["pydantic.mypy"]
+exclude = ["^src/rinne_agent/contracts/"]
+
+# ── pytest ────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+asyncio_mode = "auto"
+# Pin the fixture loop scope explicitly. pytest-asyncio warns that this default
+# is changing in a future release; setting it now means a dependency bump cannot
+# silently change how async fixtures are scoped.
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]

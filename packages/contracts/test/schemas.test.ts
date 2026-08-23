@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import Ajv from "ajv";
-import addFormats from "ajv-formats";
+import _Ajv from "ajv";
+import _addFormats from "ajv-formats";
+
+// Same CommonJS/ESM interop as src/validate.ts - see the note there.
+const Ajv = _Ajv as unknown as typeof _Ajv.default;
+const addFormats = _addFormats as unknown as typeof _addFormats.default;
 import { healthSchema, sceneDescriptionSchema } from "../src/generated/schemas.js";
 import { compileValidator, ContractViolationError } from "../src/validate.js";
 import type { HealthReport } from "../src/generated/health.js";

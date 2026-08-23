@@ -1,0 +1,55 @@
+w# ── Never, under any circumstances ────────────────────────────────────
+Rinne_Blueprint.md
+*Blueprint*.md
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+service-account*.json
+credentials.json
+*-sa-key.json
+
+# ── Version control and CI ────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github
+.githooks
+.gitleaks.toml
+
+# ── Build output and dependency trees (reinstalled inside the image) ──
+**/node_modules
+**/.next
+**/dist
+**/out
+**/build
+**/coverage
+**/*.tsbuildinfo
+**/.eslintcache
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# ── Docs, infra, editor, OS ───────────────────────────────────────────
+docs
+infra
+README.md
+SECURITY.md
+**/.vscode
+**/.idea
+**/.DS_Store
+**/Thumbs.db
+**/*.md
+!services/agent/README.md
+
+# ── Test files: they are CI's job, not the runtime image's ────────────
+**/test
+**/tests
+**/*.test.ts
+**/vitest.config.ts

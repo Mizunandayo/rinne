@@ -1,0 +1,71 @@
+version: 2
+
+updates:
+  # ── Node, whole pnpm workspace ────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Manila"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase"
+    labels: ["dependencies", "node"]
+    groups:
+      # One PR for the routine noise, so the review budget goes to the
+      # updates that actually matter.
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      production-patches:
+        dependency-type: "production"
+        update-types: ["patch"]
+    ignore:
+      # Next, React, and Rapier majors need a deliberate migration, not an
+      # automated PR two days before a submission deadline.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@dimforge/rapier3d-compat"
+        update-types: ["version-update:semver-major"]
+
+  # ── Python agent ──────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/services/agent"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Manila"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # ── GitHub Actions ────────────────────────────────────────────────
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Asia/Manila"
+    labels: ["dependencies", "ci"]
+
+  # ── Base images ───────────────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directories:
+      - "/services/web"
+      - "/services/physics"
+      - "/services/agent"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Asia/Manila"
+    labels: ["dependencies", "docker"]

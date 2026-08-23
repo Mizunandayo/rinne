@@ -19,7 +19,13 @@ export function healthRoutes(env: Env): FastifyPluginAsync {
   // eslint-disable-next-line @typescript-eslint/require-await
   return async (app: FastifyInstance): Promise<void> => {
     app.get(
-      "/healthz",
+      // NOT "/healthz". Cloud Run INTERCEPTS that exact path at its edge and
+      // returns Google's own HTML 404 - the request never reaches the container.
+      // Verified empirically against the deployed service: /healthz returned
+      // Google's error page while /readyz, /livez, /health and /v1/health all
+      // reached Fastify. The failure is invisible locally, where /healthz works
+      // fine, so it only appears once deployed.
+      "/livez",
       {
         schema: { response: { 200: responseSchema } },
         config: { rateLimit: false }, // probes must never be throttled

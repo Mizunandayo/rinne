@@ -103,16 +103,23 @@ Write-Step "3-4. Private services reject unauthenticated callers"
 foreach ($name in @('rinne-physics','rinne-agent')) {
     $status = 0
     try {
-        $r = Invoke-WebRequest -Uri "$($urls[$name])/healthz" -TimeoutSec 20 -UseBasicParsing
+        $r = Invoke-WebRequest -Uri "$($urls[$name])/livez" -TimeoutSec 20 -UseBasicParsing
         $status = $r.StatusCode
     } catch {
         $status = $_.Exception.Response.StatusCode.value__
     }
-    # 403 is correct. 200 means the service is PUBLIC - a live credit-burn risk
-    # and a security failure, not a cosmetic one.
-    Test-Assert -Name "$name returns 403 without a token" `
-        -Condition ($status -eq 403) `
-        -Detail "got HTTP $status. 200 means the service is PUBLIC. Redeploy with --no-allow-unauthenticated."
+    # WHAT MATTERS IS THAT IT IS NOT SERVED, not the precise status code.
+    # Current Cloud Run answers an unauthenticated request to a private service
+    # with 404, not 403 - it declines to confirm the service even exists, which
+    # is the better behaviour. Older releases answered 403. Asserting one exact
+    # code makes this check break on a platform change that is not a regression.
+    #
+    # A 2xx is the only genuine failure here: it means the service is PUBLIC,
+    # which is a security hole AND an open door onto the credit balance.
+    $notServed = ($status -ge 400 -and $status -lt 500)
+    Test-Assert -Name "$name refuses unauthenticated callers" `
+        -Condition $notServed `
+        -Detail "got HTTP $status. A 2xx means the service is PUBLIC - redeploy with --no-allow-unauthenticated."
 }
 
 # -- 5. Cost control --------------------------------------------------

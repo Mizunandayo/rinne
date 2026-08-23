@@ -28,8 +28,8 @@ describe("health routes", () => {
     await app.ready();
   });
 
-  it("GET /healthz returns 200 and a contract-valid report", async () => {
-    const response = await app.inject({ method: "GET", url: "/healthz" });
+  it("GET /livez returns 200 and a contract-valid report", async () => {
+    const response = await app.inject({ method: "GET", url: "/livez" });
     expect(response.statusCode).toBe(200);
 
     const report = assertHealth(response.json());
@@ -54,14 +54,14 @@ describe("health routes", () => {
     // control - a field accidentally added to a response object (an internal
     // URL, a token, a stack fragment) never reaches the caller. This asserts it
     // rather than trusting it.
-    const response = await app.inject({ method: "GET", url: "/healthz" });
+    const response = await app.inject({ method: "GET", url: "/livez" });
     expect(Object.keys(response.json() as object).sort()).toEqual(
       ["checkedAt", "region", "service", "status", "version"].sort(),
     );
   });
 
   it("sets the hardening headers", async () => {
-    const response = await app.inject({ method: "GET", url: "/healthz" });
+    const response = await app.inject({ method: "GET", url: "/livez" });
     expect(response.headers["x-content-type-options"]).toBe("nosniff");
     expect(response.headers["content-security-policy"]).toContain("default-src 'none'");
   });
@@ -82,7 +82,7 @@ describe("health routes", () => {
     // ID token had reached client-side JavaScript.
     const response = await app.inject({
       method: "OPTIONS",
-      url: "/healthz",
+      url: "/livez",
       headers: {
         origin: "https://evil.example",
         "access-control-request-method": "GET",

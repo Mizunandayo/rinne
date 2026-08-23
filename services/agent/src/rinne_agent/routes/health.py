@@ -41,7 +41,7 @@ def _base(settings: Settings) -> dict[str, object]:
 
 
 @router.get(
-    "/healthz",
+    "/livez",
     response_model=HealthReport,
     response_model_exclude_none=True,
     summary="Liveness. Touches no dependency, so a downstream blip never causes a restart loop.",

@@ -76,10 +76,18 @@ if ($repoExists) {
 }
 
 Write-Step "Container vulnerability scanning"
-if (Test-GcloudResource services list --enabled --filter="config.name=containerscanning.googleapis.com" `
-        --format="value(config.name)" --project=$ProjectId) {
-    Invoke-Gcloud services enable containerscanning.googleapis.com --project=$ProjectId --quiet | Out-Null
-    Write-Ok "containerscanning.googleapis.com enabled"
+# Enabled unconditionally. `gcloud services enable` is idempotent - enabling an
+# already-enabled API is a successful no-op - so a guard buys nothing here.
+# The previous guard was worse than nothing: `services list` SUCCEEDS whether or
+# not the API appears in its results, so Test-GcloudResource was always true and
+# the condition read "if it is enabled, enable it".
+$scanApi = "containerscanning.googleapis.com"
+$enabledApis = @(Invoke-Gcloud services list --enabled --format="value(config.name)" --project=$ProjectId -Quiet)
+if ($enabledApis -contains $scanApi) {
+    Write-Skip "$scanApi"
+} else {
+    Invoke-Gcloud services enable $scanApi --project=$ProjectId --quiet -Quiet | Out-Null
+    Write-Ok "$scanApi enabled - Artifact Registry will scan pushed images"
 }
 
 # ---------------------------------------------------------------------

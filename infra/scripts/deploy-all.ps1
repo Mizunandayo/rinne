@@ -141,6 +141,14 @@ foreach ($key in @('physics','agent','web')) {
                 $cfg = @"
 steps:
   - name: gcr.io/cloud-builders/docker
+    # DOCKER_BUILDKIT=1 is REQUIRED. The cloud-builders/docker image runs the
+    # legacy builder by default, and every Rinne Dockerfile uses
+    # `RUN --mount=type=cache,...`, which is a BuildKit-only feature. Without
+    # this the build dies with "the --mount option requires BuildKit".
+    # Docker Desktop enables BuildKit by default, so local builds succeed and
+    # only Cloud Build fails - which is exactly the kind of divergence that is
+    # cheap to fix here and expensive to debug on a deadline.
+    env: ['DOCKER_BUILDKIT=1']
     args: ['build', '-f', '$($svc.Dockerfile)', '-t', '$image', '.']
 images:
   - '$image'

@@ -17,7 +17,7 @@ SCHEMA_PATH = (
 
 
 def test_healthz_returns_a_contract_valid_report(client: TestClient) -> None:
-    response = client.get("/healthz")
+    response = client.get("/livez")
     assert response.status_code == 200
 
     body = response.json()
@@ -33,7 +33,7 @@ def test_healthz_emits_only_contract_properties(client: TestClient) -> None:
     trusting it."""
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     allowed = set(schema["properties"].keys())
-    assert set(client.get("/healthz").json().keys()) <= allowed
+    assert set(client.get("/livez").json().keys()) <= allowed
 
 
 def test_readyz_returns_ok_with_no_dependencies_on_day_one(client: TestClient) -> None:
@@ -43,7 +43,7 @@ def test_readyz_returns_ok_with_no_dependencies_on_day_one(client: TestClient) -
 
 
 def test_security_headers_are_present(client: TestClient) -> None:
-    headers = client.get("/healthz").headers
+    headers = client.get("/livez").headers
     assert headers["x-content-type-options"] == "nosniff"
     assert headers["x-frame-options"] == "DENY"
     assert "default-src 'none'" in headers["content-security-policy"]
@@ -51,12 +51,12 @@ def test_security_headers_are_present(client: TestClient) -> None:
 
 
 def test_request_id_is_echoed(client: TestClient) -> None:
-    response = client.get("/healthz", headers={"x-request-id": "probe-123"})
+    response = client.get("/livez", headers={"x-request-id": "probe-123"})
     assert response.headers["x-request-id"] == "probe-123"
 
 
 def test_request_id_is_generated_when_absent(client: TestClient) -> None:
-    assert client.get("/healthz").headers["x-request-id"]
+    assert client.get("/livez").headers["x-request-id"]
 
 
 def test_openapi_is_not_served_when_docs_are_disabled(client: TestClient) -> None:
@@ -66,7 +66,7 @@ def test_openapi_is_not_served_when_docs_are_disabled(client: TestClient) -> Non
 
 def test_oversized_body_is_rejected_before_a_handler_runs(client: TestClient) -> None:
     response = client.post(
-        "/healthz",
+        "/livez",
         content=b"x" * 10,
         headers={"content-length": "99999999"},
     )

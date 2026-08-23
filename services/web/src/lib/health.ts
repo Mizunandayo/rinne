@@ -47,7 +47,7 @@ export async function probeService(service: ServiceName, baseUrl: string): Promi
   const elapsed = (): number => Math.round(performance.now() - started);
 
   try {
-    const target = new URL("/healthz", baseUrl);
+    const target = new URL("/livez", baseUrl);
     const token = await getIdToken(baseUrl);
 
     const response = await fetch(target, {

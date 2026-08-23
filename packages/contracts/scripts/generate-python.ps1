@@ -16,7 +16,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$GeneratorVersion = "0.26.4"
+    [string]$GeneratorVersion = "0.74.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,6 +77,7 @@ Get-ChildItem -Path $schemaDir -Filter "*.schema.json" | Sort-Object Name | ForE
         --field-constraints `
         --snake-case-field `
         --disable-timestamp `
+        --formatters black isort `
         --custom-file-header $header
 
     if ($LASTEXITCODE -ne 0) { throw "datamodel-codegen failed for $($_.Name)" }

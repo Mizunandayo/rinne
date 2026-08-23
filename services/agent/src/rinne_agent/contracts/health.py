@@ -1,26 +1,19 @@
 # GENERATED FILE - DO NOT EDIT BY HAND.
-
 #
-
 # Source of truth : packages/contracts/schemas
-
 # Regenerate      : pwsh ./packages/contracts/scripts/generate-python.ps1
-
 #
-
 # CI regenerates and runs git diff --exit-code. A schema edit without a
-
 # regeneration is a build failure.
 
 from __future__ import annotations
 
-from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
-class Service(Enum):
+class Service(StrEnum):
     """
     Which Rinne service produced this report.
     """
@@ -31,7 +24,7 @@ class Service(Enum):
     reconstruction = "reconstruction"
 
 
-class Status(Enum):
+class Status(StrEnum):
     """
     ok: fully serving. degraded: serving with a failed non-critical dependency. down: not serving.
     """
@@ -41,7 +34,7 @@ class Status(Enum):
     down = "down"
 
 
-class Status1(Enum):
+class Status1(StrEnum):
     ok = "ok"
     degraded = "degraded"
     down = "down"
@@ -77,7 +70,7 @@ class HealthReport(BaseModel):
     """
     Build identifier. Set from the image tag at deploy time.
     """
-    checked_at: datetime = Field(..., alias="checkedAt")
+    checked_at: AwareDatetime = Field(..., alias="checkedAt")
     """
     RFC 3339 timestamp of this check, produced at request time and never cached.
     """

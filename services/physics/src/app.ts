@@ -72,23 +72,37 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(healthRoutes(env));
 
 
-  app.setErrorHandler((error, request, reply) => {
-    const status = typeof error.statusCode === "number" ? error.statusCode : 500;
+  app.setErrorHandler((error: unknown, request, reply) => {
+    // Fastify 5.12 types the error handler's first argument as `unknown` rather
+    // than FastifyError, which is strictly more honest: anything a route throws
+    // lands here, including values that are not Errors at all. Narrow it
+    // explicitly instead of asserting a shape.
+    const statusCode =
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number"
+        ? error.statusCode
+        : 500;
+
+    const message = error instanceof Error ? error.message : "Unknown error";
 
     request.log.error(
-      { err: error, requestId: request.id, url: request.url, status },
+      { err: error, requestId: request.id, url: request.url, status: statusCode },
       "request failed",
     );
 
-    // 4xx from schema validation is safe and useful to echo back; 5xx is not.
+    // A 4xx from schema validation is safe and useful to echo back in
+    // development; in production it is not, and a 5xx never is. A stack trace in
+    // an HTTP response is information disclosure, not a debugging convenience.
     const safeMessage =
-      status >= 400 && status < 500 && !isProduction
-        ? error.message
-        : status >= 400 && status < 500
+      statusCode >= 400 && statusCode < 500
+        ? isProduction
           ? "Request failed validation"
-          : "Internal error";
+          : message
+        : "Internal error";
 
-    void reply.code(status).send({ error: safeMessage, requestId: request.id });
+    void reply.code(statusCode).send({ error: safeMessage, requestId: request.id });
   });
 
   app.setNotFoundHandler((request, reply) => {

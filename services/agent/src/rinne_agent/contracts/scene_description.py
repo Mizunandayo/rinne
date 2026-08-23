@@ -1,25 +1,19 @@
 # GENERATED FILE - DO NOT EDIT BY HAND.
-
 #
-
 # Source of truth : packages/contracts/schemas
-
 # Regenerate      : pwsh ./packages/contracts/scripts/generate-python.ps1
-
 #
-
 # CI regenerates and runs git diff --exit-code. A schema edit without a
-
 # regeneration is a build failure.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import IntEnum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class SchemaVersion(Enum):
+class SchemaVersion(IntEnum):
     """
     Bumped on any breaking change. A consumer that does not recognise the value must refuse the document rather than guess.
     """
@@ -27,11 +21,11 @@ class SchemaVersion(Enum):
     integer_1 = 1
 
 
-class Length(Enum):
+class Length(StrEnum):
     m = "m"
 
 
-class Mass(Enum):
+class Mass(StrEnum):
     kg = "kg"
 
 
@@ -55,7 +49,7 @@ class Ground(BaseModel):
     restitution: float = Field(..., ge=0.0, le=1.0)
 
 
-class Kind(Enum):
+class Kind(StrEnum):
     tip = "tip"
 
 
@@ -79,11 +73,11 @@ class Test(BaseModel):
     )
 
 
-class Kind1(Enum):
+class Kind1(StrEnum):
     load = "load"
 
 
-class Kind2(Enum):
+class Kind2(StrEnum):
     drop = "drop"
 
 
@@ -103,7 +97,7 @@ class Solver(BaseModel):
     """
 
 
-class Source(Enum):
+class Source(StrEnum):
     agent = "agent"
     cockpit = "cockpit"
     refit = "refit"
@@ -138,7 +132,7 @@ class Vec3(BaseModel):
     z: float = Field(..., ge=-1000.0, le=1000.0)
 
 
-class Format(Enum):
+class Format(StrEnum):
     glb = "glb"
 
 

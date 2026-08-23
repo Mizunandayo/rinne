@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22.11.0"
+  NODE_VERSION: "22.23.2"
   PNPM_VERSION: "10.11.0"
   PYTHON_VERSION: "3.12"
 
@@ -109,7 +109,16 @@ jobs:
         run: uv run pytest
 
       - name: Audit dependencies
-        run: uv run pip-audit --strict --progress-spinner=off
+        # Audit the EXPORTED LOCKFILE, not the installed environment.
+        # `pip-audit --strict` treats any package it cannot resolve as a
+        # failure, and rinne-agent is a local project that will never exist on
+        # PyPI - so auditing the environment always fails. Exporting with
+        # --no-emit-project gives exactly the third-party dependency set, and
+        # --strict then means what it should: an unauditable THIRD-PARTY
+        # package fails the build.
+        run: |
+          uv export --no-emit-project --format requirements-txt --quiet > /tmp/requirements.txt
+          uv run pip-audit --strict --progress-spinner=off --requirement /tmp/requirements.txt
 
   # ────────────────────────────────────────────────────────────────
   contracts-drift:

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, ORJSONResponse
+from fastapi.responses import JSONResponse
 
 from rinne_agent.config import Settings, get_settings
 from rinne_agent.logging_setup import configure_logging, request_id_var
@@ -49,7 +49,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="Rinne Agent",
         version=resolved.service_version,
         lifespan=lifespan,
-        default_response_class=ORJSONResponse,
+        # No default_response_class. FastAPI 0.141 deprecated ORJSONResponse:
+        # it now serialises straight to JSON bytes via Pydantic whenever a
+        # return type or response_model is set, which is faster than routing
+        # through a custom response class. Every route here declares
+        # response_model, so this is strictly better.
         # Off in production. This service is IAM-private, but a published
         # schema is a free gift to anyone who ever finds an IAM gap.
         docs_url="/docs" if resolved.docs_enabled else None,

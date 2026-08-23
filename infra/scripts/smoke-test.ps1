@@ -36,6 +36,36 @@ Assert-Tool -Name gcloud -InstallHint "Install the Google Cloud CLI."
 
 $failures = New-Object System.Collections.Generic.List[string]
 
+function Get-Prop {
+    <#
+      Safely read an OPTIONAL property. Set-StrictMode -Version Latest turns a
+      missing property into a terminating error, and several fields in
+      /api/manifest are legitimately absent - `reason` only exists when a
+      service is UNREACHABLE. Reading it on a healthy service killed this script.
+    #>
+    param($Object, [string]$Name, $Default = "")
+    if ($null -eq $Object) { return $Default }
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($null -eq $prop -or $null -eq $prop.Value) { return $Default }
+    return $prop.Value
+}
+
+function Get-HttpStatus {
+    <#
+      Extract an HTTP status from a caught error WITHOUT assuming its shape.
+      Only a WebException carries .Response; a timeout, a DNS failure, or - as
+      happened here - a StrictMode PropertyNotFoundException does not. Reaching
+      blindly for .Response inside a catch turns a small failure into an
+      uncaught one that hides the original cause.
+    #>
+    param($ErrorRecord)
+    $resp = Get-Prop (Get-Prop $ErrorRecord "Exception" $null) "Response" $null
+    if ($null -eq $resp) { return 0 }
+    $code = Get-Prop $resp "StatusCode" $null
+    if ($null -eq $code) { return 0 }
+    try { return [int]$code } catch { return 0 }
+}
+
 function Test-Assert {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -88,12 +118,13 @@ try {
         -Condition ($response.StatusCode -eq 200) -Detail "got $($response.StatusCode)"
 
     foreach ($entry in $manifest.services) {
-        Test-Assert -Name "$($entry.service) reachable and ok" `
-            -Condition ($entry.reachable -eq $true -and $entry.status -eq 'ok') `
-            -Detail "reachable=$($entry.reachable) status=$($entry.status) reason=$($entry.reason)"
+        $reason = Get-Prop $entry "reason" "-"
+        Test-Assert -Name "$(Get-Prop $entry 'service' '?') reachable and ok" `
+            -Condition ((Get-Prop $entry "reachable" $false) -eq $true -and (Get-Prop $entry "status" "") -eq 'ok') `
+            -Detail "reachable=$(Get-Prop $entry 'reachable' $false) status=$(Get-Prop $entry 'status' '?') reason=$reason"
     }
 } catch {
-    $status = $_.Exception.Response.StatusCode.value__
+    $status = Get-HttpStatus $_
     Test-Assert -Name "manifest reports all services healthy" -Condition $false `
         -Detail "HTTP $status - $($_.Exception.Message)"
 }
@@ -106,7 +137,7 @@ foreach ($name in @('rinne-physics','rinne-agent')) {
         $r = Invoke-WebRequest -Uri "$($urls[$name])/livez" -TimeoutSec 20 -UseBasicParsing
         $status = $r.StatusCode
     } catch {
-        $status = $_.Exception.Response.StatusCode.value__
+        $status = Get-HttpStatus $_
     }
     # WHAT MATTERS IS THAT IT IS NOT SERVED, not the precise status code.
     # Current Cloud Run answers an unauthenticated request to a private service

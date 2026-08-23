@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # docker build -f services/physics/Dockerfile -t rinne-physics:local .
 
-FROM node:22.23.2-alpine3.23 AS base
+FROM node:26.7.0-alpine3.23 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
 # pnpm comes from npm, not corepack. The corepack bundled with node:22.11.0
 # carries a stale set of npm registry signing keys and dies with
@@ -38,7 +38,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --prod \
       --filter @rinne/physics --filter @rinne/contracts
 
-FROM node:22.23.2-alpine3.23 AS runtime
+FROM node:26.7.0-alpine3.23 AS runtime
 ENV NODE_ENV=production PORT=8080
 RUN addgroup -g 10001 -S rinne && adduser -u 10001 -S rinne -G rinne
 WORKDIR /repo

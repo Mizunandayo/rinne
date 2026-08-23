@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:22.23.2-alpine3.23 AS base
+FROM node:26.7.0-alpine3.23 AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true \
@@ -32,7 +32,7 @@ RUN pnpm --filter @rinne/contracts run build \
  && pnpm --filter @rinne/web run build
 
 # ── Runtime ──────────────────────────────────────────────────────────
-FROM node:22.23.2-alpine3.23 AS runtime
+FROM node:26.7.0-alpine3.23 AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \
     HOSTNAME=0.0.0.0 \

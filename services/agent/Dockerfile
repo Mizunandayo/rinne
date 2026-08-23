@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #   docker build -f services/agent/Dockerfile -t rinne-agent:local .
 
-FROM ghcr.io/astral-sh/uv:0.5.14-python3.12-bookworm-slim AS build
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm-slim AS build
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never

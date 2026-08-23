@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.13"
 # Exact pins. A range plus a lockfile is still a range the moment anyone runs
 # `uv lock --upgrade`, and the reproducible-setup criterion is graded.
 dependencies = [
-    "fastapi==0.115.6",
+    "fastapi==0.141.1",
     "uvicorn[standard]==0.34.0",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.0",

@@ -16,5 +16,6 @@
 
 packages/contracts/src/generated/**            linguist-generated=true
 services/agent/src/rinne_agent/contracts/**    linguist-generated=true
+services/reconstruction/src/rinne_reconstruction/contracts/**  linguist-generated=true
 pnpm-lock.yaml                                 linguist-generated=true
 uv.lock                                        linguist-generated=true

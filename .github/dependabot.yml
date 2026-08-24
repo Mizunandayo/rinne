@@ -33,9 +33,11 @@ updates:
       - dependency-name: "@dimforge/rapier3d-compat"
         update-types: ["version-update:semver-major"]
 
-  # ── Python agent ──────────────────────────────────────────────────
+  # ── Python services ───────────────────────────────────────────────
   - package-ecosystem: "pip"
-    directory: "/services/agent"
+    directories:
+      - "/services/agent"
+      - "/services/reconstruction"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -47,6 +49,19 @@ updates:
       dev-dependencies:
         dependency-type: "development"
         update-types: ["minor", "patch"]
+    ignore:
+      # mypy 2.x is a deliberate migration against `strict = true`, not an
+      # automated PR a week before a submission deadline. `pip-audit --strict`
+      # still blocks CI on any actual advisory, so this trades away no security.
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
+      # Same argument as @dimforge/rapier3d-compat above: a torch major changes
+      # numerical results, and the +cu124 local version is pinned to a specific
+      # PyTorch index. Both have to move together, by hand.
+      - dependency-name: "torch"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "torchvision"
+        update-types: ["version-update:semver-major"]
 
   # ── GitHub Actions ────────────────────────────────────────────────
 
@@ -60,12 +75,24 @@ updates:
 
   # ── Base images ───────────────────────────────────────────────────
   - package-ecosystem: "docker"
+    # A glob, not an enumerated list. An explicit list means every new service
+    # is silently unmonitored until someone remembers to add it here, and the
+    # one place that failure shows up is a CVE nobody was told about.
     directories:
-      - "/services/web"
-      - "/services/physics"
-      - "/services/agent"
+      - "/services/*"
     schedule:
       interval: "weekly"
       day: "monday"
       timezone: "Asia/Manila"
     labels: ["dependencies", "docker"]
+    ignore:
+      # Node 22.23.2 is pinned in four places (.nvmrc, the root `engines`
+      # field, CI's NODE_VERSION, and the web + physics Dockerfiles); Python
+      # 3.12.14 in two (each service's requires-python, and its Dockerfile).
+      # A major bump here updates the Dockerfile and nothing else, so it lands
+      # as a red PR every Monday and is closed every Monday. Patch and minor
+      # bumps still come through, and that is where base image CVE fixes live.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]

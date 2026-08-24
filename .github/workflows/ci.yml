@@ -85,9 +85,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      # uv 0.10.10, matching services/agent/Dockerfile and the local toolchain.
+      # NOT 0.5.14. services/agent/uv.lock is written at `revision = 3`, a
+      # lockfile revision no uv older than 0.8 can be trusted to read. The
+      # Dockerfile was already moved to 0.10.10 for exactly this reason; CI was
+      # left behind, so the build and the test job were reading one lockfile
+      # through two different uv releases.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
         with:
-          version: "0.5.14"
+          version: "0.10.10"
           enable-cache: true
           cache-dependency-glob: "services/agent/uv.lock"
 
@@ -138,9 +144,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      # Same pin as the python job. This one runs datamodel-codegen through
+      # `uv tool run`, so a uv that cannot read the lockfile fails the drift
+      # check for a reason that has nothing to do with the schemas.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
         with:
-          version: "0.5.14"
+          version: "0.10.10"
           enable-cache: true
 
       - run: pnpm install --frozen-lockfile

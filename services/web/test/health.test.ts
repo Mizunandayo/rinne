@@ -26,6 +26,8 @@ describe("probeService", () => {
       NODE_ENV: "test",
       PHYSICS_SERVICE_URL: "https://rinne-physics.example.run.app",
       AGENT_SERVICE_URL: "https://rinne-agent.example.run.app",
+      RECONSTRUCTION_SERVICE_URL: "https://rinne-reconstruction.example.run.app",
+      GCS_ARTIFACTS_BUCKET: "rinne-artifacts-rinnehackathon",
     };
   });
 

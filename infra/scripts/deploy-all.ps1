@@ -31,8 +31,8 @@ param(
     [string]$Region        = "asia-southeast1",
     [string]$RepoName      = "rinne",
     [string]$Tag,
-    [ValidateSet('physics','agent','web')]
-    [string[]]$Services    = @('physics','agent','web'),
+    [ValidateSet('physics','reconstruction','agent','web')]
+    [string[]]$Services    = @('physics','reconstruction','agent','web'),
     [switch]$UseCloudBuild,
     [switch]$SkipBuild
 )
@@ -78,6 +78,20 @@ $config = @{
         Cpu         = '1'
         Env         = @{ NODE_ENV = 'production'; LOG_LEVEL = 'info' }
     }
+    reconstruction = @{
+        Name        = 'rinne-reconstruction'
+        ProbePath   = '/readyz'
+        Dockerfile  = 'services/reconstruction/Dockerfile'
+        ServiceAcct = 'rinne-reconstruction-sa'
+        Public      = $false
+        MaxInstances= 1
+        Concurrency = 1
+        TimeoutSec  = 300
+        Memory      = '16Gi'
+        Cpu         = '4'
+        Gpu         = $true
+        Env         = @{ APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false'; PIPELINE_NAME = 'stub'; STORAGE_MODE = 'gcs' }
+    }
     agent = @{
         Name        = 'rinne-agent'
         ProbePath   = '/readyz'
@@ -114,7 +128,7 @@ if (-not $SkipBuild -and -not $UseCloudBuild) {
 
 $deployed = @{}
 
-foreach ($key in @('physics','agent','web')) {
+foreach ($key in @('physics','reconstruction','agent','web')) {
     if ($Services -notcontains $key) { continue }
 
     $svc   = $config[$key]
@@ -188,9 +202,10 @@ options:
     $envMap['GCP_PROJECT_ID']  = $ProjectId
 
     if ($key -eq 'web') {
-        if (-not $deployed.ContainsKey('physics') -or -not $deployed.ContainsKey('agent')) {
+        if (-not $deployed.ContainsKey('physics') -or -not $deployed.ContainsKey('agent') `
+            -or -not $deployed.ContainsKey('reconstruction')) {
             # Recover the URLs when web is deployed on its own.
-            foreach ($dep in @('physics','agent')) {
+            foreach ($dep in @('physics','reconstruction','agent')) {
                 if (-not $deployed.ContainsKey($dep)) {
                     $url = (Invoke-Gcloud run services describe $config[$dep].Name `
                         --region=$Region --project=$ProjectId `
@@ -200,8 +215,10 @@ options:
                 }
             }
         }
-        $envMap['PHYSICS_SERVICE_URL'] = $deployed['physics']
-        $envMap['AGENT_SERVICE_URL']   = $deployed['agent']
+        $envMap['PHYSICS_SERVICE_URL']        = $deployed['physics']
+        $envMap['AGENT_SERVICE_URL']          = $deployed['agent']
+        $envMap['RECONSTRUCTION_SERVICE_URL'] = $deployed['reconstruction']
+        $envMap['GCS_ARTIFACTS_BUCKET']       = "rinne-artifacts-$ProjectId"
     }
 
 
@@ -239,6 +256,21 @@ options:
         '--quiet'
     )
 
+    # L4 has a hard 4 CPU / 16GiB floor, and --no-cpu-throttling is mandatory for
+    # GPU - which is what makes billing instance-based rather than request-based.
+    if ($svc.ContainsKey('Gpu') -and $svc.Gpu) {
+        $deployArgs = $deployArgs | Where-Object { $_ -notlike '--startup-probe=*' }
+        # 23 x 10 = 230s, against a hard 240s ceiling on failureThreshold x periodSeconds.
+        $deployArgs += @(
+            '--gpu=1',
+            '--gpu-type=nvidia-l4',
+            '--no-gpu-zonal-redundancy',
+            '--no-cpu-throttling',
+            "--startup-probe=httpGet.path=$($svc.ProbePath),httpGet.port=8080,initialDelaySeconds=10,periodSeconds=10,timeoutSeconds=5,failureThreshold=23",
+            "--liveness-probe=httpGet.path=/livez,httpGet.port=8080,periodSeconds=30,timeoutSeconds=5,failureThreshold=3"
+        )
+    }
+
     $deployArgs += if ($svc.Public) { '--allow-unauthenticated' } else { '--no-allow-unauthenticated' }
 
     Invoke-Gcloud @deployArgs | Out-Null
@@ -250,12 +282,18 @@ options:
 
     # -- Per-service invoker binding -----------------------------------
     if (-not $svc.Public) {
-        Invoke-Gcloud run services add-iam-policy-binding $svc.Name `
-            --region=$Region --project=$ProjectId `
-            --member="serviceAccount:rinne-web-sa@$ProjectId.iam.gserviceaccount.com" `
-            --role="roles/run.invoker" `
-            --quiet -Quiet | Out-Null
-        Write-Ok "  rinne-web-sa granted roles/run.invoker on $($svc.Name) only"
+        $invokers = @('rinne-web-sa')
+        # The agent calls reconstruction on Day 4. Granting it now costs one line
+        # and saves debugging a 403 on a ring-fenced day.
+        if ($key -eq 'reconstruction') { $invokers += 'rinne-agent-sa' }
+        foreach ($invoker in $invokers) {
+            Invoke-Gcloud run services add-iam-policy-binding $svc.Name `
+                --region=$Region --project=$ProjectId `
+                --member="serviceAccount:$invoker@$ProjectId.iam.gserviceaccount.com" `
+                --role="roles/run.invoker" `
+                --quiet -Quiet | Out-Null
+            Write-Ok "  $invoker granted roles/run.invoker on $($svc.Name) only"
+        }
     }
 }
 

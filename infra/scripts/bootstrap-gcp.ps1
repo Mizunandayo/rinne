@@ -47,7 +47,8 @@ Write-Step "Verifying the APIs enabled in Part 0"
 $required = @(
     'run.googleapis.com', 'artifactregistry.googleapis.com', 'cloudbuild.googleapis.com',
     'secretmanager.googleapis.com', 'aiplatform.googleapis.com', 'firestore.googleapis.com',
-    'pubsub.googleapis.com', 'eventarc.googleapis.com', 'iamcredentials.googleapis.com'
+    'pubsub.googleapis.com', 'eventarc.googleapis.com', 'iamcredentials.googleapis.com',
+    'storage.googleapis.com'
 )
 $enabled = (Invoke-Gcloud services list --enabled --format="value(config.name)" --project=$ProjectId -Quiet) -split "`n" |
     ForEach-Object { $_.Trim() } | Where-Object { $_ }
@@ -126,7 +127,7 @@ foreach ($sa in $serviceAccounts) {
         Write-Skip "service account $($sa.Id)"
     } else {
         Invoke-Gcloud iam service-accounts create $sa.Id `
-            --display-name=$sa.Display `
+            --display-name="$($sa.Display)" `
             --project=$ProjectId --quiet | Out-Null
         Write-Ok "Created $email"
     }
@@ -140,6 +141,63 @@ foreach ($sa in $serviceAccounts) {
         Write-Ok "  $($sa.Id) -> $role"
     }
 }
+
+
+# ---------------------------------------------------------------------
+Write-Step "Artifacts bucket"
+
+# Uniform bucket-level access and enforced public access prevention: a mesh URI
+# is model-shaped output, so per-object ACLs must not be reachable at all.
+$bucket = "rinne-artifacts-$ProjectId"
+if (Test-GcloudResource storage buckets describe "gs://$bucket" --project=$ProjectId --format="value(name)") {
+    Write-Skip "bucket gs://$bucket"
+} else {
+    Invoke-Gcloud storage buckets create "gs://$bucket" `
+        --project=$ProjectId `
+        --location=$Region `
+        --uniform-bucket-level-access `
+        --public-access-prevention `
+        --no-enable-autoclass `
+        --quiet | Out-Null
+    Write-Ok "Created gs://$bucket in $Region"
+}
+
+# Soft-delete off. It is billable storage for objects a 14-day lifecycle is
+# already deleting on purpose.
+Invoke-Gcloud storage buckets update "gs://$bucket" `
+    --project=$ProjectId `
+    --clear-soft-delete `
+    --quiet -Quiet | Out-Null
+Write-Ok "Soft-delete disabled"
+
+$lifecyclePath = Join-Path $PSScriptRoot "..\policies\bucket-lifecycle.json"
+if (-not (Test-Path $lifecyclePath)) { throw "Missing $lifecyclePath" }
+Invoke-Gcloud storage buckets update "gs://$bucket" `
+    --project=$ProjectId `
+    --lifecycle-file=$lifecyclePath `
+    --quiet -Quiet | Out-Null
+Write-Ok "Lifecycle applied: objects deleted after 14 days"
+
+# ---------------------------------------------------------------------
+Write-Step "Bucket IAM - deliberately asymmetric"
+
+# reconstruction WRITES and never reads; web READS and never writes. Neither
+# holds objectAdmin, and both bindings are on the bucket, never the project.
+$bucketBindings = @(
+    @{ Sa = "rinne-reconstruction-sa"; Role = "roles/storage.objectCreator" },
+    @{ Sa = "rinne-web-sa";            Role = "roles/storage.objectViewer" }
+)
+foreach ($binding in $bucketBindings) {
+    $member = "serviceAccount:$($binding.Sa)@$ProjectId.iam.gserviceaccount.com"
+    Invoke-Gcloud storage buckets add-iam-policy-binding "gs://$bucket" `
+        --project=$ProjectId `
+        --member=$member `
+        --role="$($binding.Role)" `
+        --quiet -Quiet | Out-Null
+    Write-Ok "  $($binding.Sa) -> $($binding.Role) on gs://$bucket"
+}
+
+
 
 # ---------------------------------------------------------------------
 Write-Step "Artifact Registry cleanup policy"
@@ -164,6 +222,7 @@ try {
 Write-Step "Bootstrap complete"
 Write-Host ""
 Write-Host "  Artifact Registry : $Region-docker.pkg.dev/$ProjectId/$RepoName" -ForegroundColor White
+Write-Host "  Artifacts bucket  : gs://$bucket (14-day lifecycle, UBLA, PAP enforced)" -ForegroundColor White
 Write-Host "  Service accounts  : rinne-{web,physics,agent,reconstruction}-sa" -ForegroundColor White
 Write-Host ""
 Write-Host "  Next:  pwsh .\infra\scripts\deploy-all.ps1" -ForegroundColor White

@@ -787,3 +787,15 @@ button:disabled,
   display: flex;
   justify-content: flex-start;
 }
+
+/* The element rule above targets `span` directly, so a label inside a button
+   never inherits the button's colour, and Link keeps the anchor underline. */
+.rinne-button,
+.rinne-button:hover,
+.rinne-button:visited {
+  text-decoration: none;
+}
+.rinne-button span,
+.rinne-inline-link span {
+  color: inherit;
+}

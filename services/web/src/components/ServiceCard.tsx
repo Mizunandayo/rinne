@@ -10,7 +10,7 @@ const SERVICE_META: Record<
   web: { Icon: Globe, title: "rinne-web", role: "Public cockpit and manifest" },
   physics: { Icon: Cpu, title: "rinne-physics", role: "Headless Rapier, private" },
   agent: { Icon: Boxes, title: "rinne-agent", role: "FastAPI and ADK, private" },
-  reconstruction: { Icon: Boxes, title: "rinne-reconstruction", role: "TripoSR on GPU" },
+  reconstruction: { Icon: Boxes, title: "rinne-reconstruction", role: "Reconstruction on L4 GPU" },
 };
 
 export function ServiceCard({ outcome }: { readonly outcome: ProbeOutcome }) {

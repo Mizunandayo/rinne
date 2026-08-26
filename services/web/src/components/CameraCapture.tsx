@@ -18,6 +18,7 @@ export function CameraCapture({ onCapture, disabled = false }: CameraCaptureProp
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [phase, setPhase] = useState<Phase>("starting");
+  const [mirrored, setMirrored] = useState(false);
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -35,6 +36,10 @@ export function CameraCapture({ onCapture, disabled = false }: CameraCaptureProp
         audio: false,
       });
       streamRef.current = stream;
+      // A front camera should read like a mirror; a rear one must not. Decide
+      // from the track that actually opened - the constraint is only a request.
+      const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+      setMirrored(facing !== "environment");
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -88,7 +93,13 @@ export function CameraCapture({ onCapture, disabled = false }: CameraCaptureProp
   return (
     <div className="rinne-capture">
       <div className="rinne-capture-stage">
-        <video ref={videoRef} playsInline muted className="rinne-capture-video" />
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="rinne-capture-video"
+          data-mirrored={mirrored}
+        />
         {phase !== "live" ? (
           <p className="rinne-capture-overlay">
             {phase === "starting"

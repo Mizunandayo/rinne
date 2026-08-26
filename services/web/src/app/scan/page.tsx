@@ -112,7 +112,11 @@ export default function ScanPage() {
       {phase === "done" && result !== null ? (
         <>
           <section className="rinne-scan-result rinne-enter">
-            <MeshViewer requestId={result.requestId} heightMeters={result.mesh.extent.y} />
+            <MeshViewer
+              requestId={result.requestId}
+              heightMeters={result.mesh.extent.y}
+              confidence={result.confidence.score}
+            />
             <ConfidenceReadout confidence={result.confidence} />
           </section>
 

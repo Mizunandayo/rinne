@@ -121,6 +121,12 @@ try {
         -Condition ($response.StatusCode -eq 200) -Detail "got $($response.StatusCode)"
 
     foreach ($entry in $manifest.services) {
+        # A cold service was deliberately not probed, so it is neither healthy
+        # nor broken. Section 7 checks its shape; -IncludeGpu wakes it.
+        if ((Get-Prop $entry "probed" $true) -eq $false) {
+            Write-Ok "$(Get-Prop $entry 'service' '?') not probed (cold, by design)"
+            continue
+        }
         $reason = Get-Prop $entry "reason" "-"
         Test-Assert -Name "$(Get-Prop $entry 'service' '?') reachable and ok" `
             -Condition ((Get-Prop $entry "reachable" $false) -eq $true -and (Get-Prop $entry "status" "") -eq 'ok') `

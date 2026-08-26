@@ -168,8 +168,6 @@ jobs:
           uv export --no-emit-project --all-groups --format requirements-txt --quiet > /tmp/reconstruction-requirements.txt
           uv run pip-audit --strict --progress-spinner=off --requirement /tmp/reconstruction-requirements.txt
 
-
-
   # ────────────────────────────────────────────────────────────────
   contracts-drift:
     name: Contracts — generated output matches the schemas

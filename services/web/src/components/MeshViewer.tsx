@@ -8,12 +8,20 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 // Section 11: the viewer surface is #111111 so light line work reads on it.
 const VIEWER_SURFACE = 0x111111;
 
+// Section 11: confidence is motion, not colour. An unsure mesh is visibly
+// unsettled; a confident one is still. Must read at projector distance.
+const TREMOR_MAX_RADIANS = 0.09;
+// Real scores cluster high, so a linear map leaves everything looking calm.
+// The exponent lifts the middle without making 0% absurd.
+const TREMOR_CURVE = 0.6;
+
 interface MeshViewerProps {
   readonly requestId: string;
   readonly heightMeters: number;
+  readonly confidence: number;
 }
 
-export function MeshViewer({ requestId, heightMeters }: MeshViewerProps) {
+export function MeshViewer({ requestId, heightMeters, confidence }: MeshViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -51,12 +59,19 @@ export function MeshViewer({ requestId, heightMeters }: MeshViewerProps) {
 
     let disposed = false;
     let frame = 0;
+    let model: THREE.Group | null = null;
+
+    // Respect the OS setting rather than animating over it.
+    const unrest = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : Math.max(0, Math.min(1, 1 - confidence)) ** TREMOR_CURVE;
 
     const loader = new GLTFLoader();
     loader.load(
       `/api/mesh/${requestId}`,
       (gltf) => {
         if (disposed) return;
+        model = gltf.scene;
         scene.add(gltf.scene);
 
         const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -85,6 +100,17 @@ export function MeshViewer({ requestId, heightMeters }: MeshViewerProps) {
 
     const render = () => {
       frame = requestAnimationFrame(render);
+
+      // Three incommensurate frequencies so it reads as unrest rather than a
+      // loop. Amplitude is driven entirely by how unsure the service was.
+      if (model !== null && unrest > 0.01) {
+        const t = performance.now() / 1000;
+        const amp = unrest * TREMOR_MAX_RADIANS;
+        model.rotation.x = Math.sin(t * 11.3) * amp;
+        model.rotation.z = Math.sin(t * 13.7) * amp;
+        model.rotation.y = Math.sin(t * 7.1) * amp * 0.5;
+      }
+
       controls.update();
       renderer.render(scene, camera);
     };
@@ -117,7 +143,7 @@ export function MeshViewer({ requestId, heightMeters }: MeshViewerProps) {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [requestId, heightMeters]);
+  }, [requestId, heightMeters, confidence]);
 
   return (
     <div className="rinne-viewer">

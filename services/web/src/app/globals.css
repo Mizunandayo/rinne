@@ -799,3 +799,9 @@ button:disabled,
 .rinne-inline-link span {
   color: inherit;
 }
+
+/* Preview only. drawImage reads the raw track, so the captured frame - and the
+   image the model sees - is never mirrored. */
+.rinne-capture-video[data-mirrored="true"] {
+  transform: scaleX(-1);
+}

@@ -5,5 +5,6 @@ coverage/
 pnpm-lock.yaml
 uv.lock
 packages/contracts/src/generated/
+services/web/next-env.d.ts
 services/agent/
 *.md

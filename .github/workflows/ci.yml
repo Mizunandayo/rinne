@@ -125,6 +125,52 @@ jobs:
           uv run pip-audit --strict --progress-spinner=off --requirement /tmp/requirements.txt
 
   # ────────────────────────────────────────────────────────────────
+  python-reconstruction:
+    name: Reconstruction — lint, typecheck, test, audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/reconstruction
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
+        with:
+          version: "0.10.10"
+          enable-cache: true
+          cache-dependency-glob: "services/reconstruction/uv.lock"
+
+      # --group dev, NOT --all-groups. --all-groups would pull the `gpu` group,
+      # which is ~2.5GB of torch this job never imports and never runs.
+      - name: Install
+        run: uv sync --locked --group dev
+
+      - name: Ruff lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: Audit dependencies
+        # --all-groups HERE, unlike the install above: torch and torchvision are
+        # pinned in pyproject, so they must be audited even though CI never
+        # installs them. Exporting is metadata only and downloads nothing.
+        run: |
+          uv export --no-emit-project --all-groups --format requirements-txt --quiet > /tmp/reconstruction-requirements.txt
+          uv run pip-audit --strict --progress-spinner=off --requirement /tmp/reconstruction-requirements.txt
+
+
+
+  # ────────────────────────────────────────────────────────────────
   contracts-drift:
     name: Contracts — generated output matches the schemas
     runs-on: ubuntu-24.04

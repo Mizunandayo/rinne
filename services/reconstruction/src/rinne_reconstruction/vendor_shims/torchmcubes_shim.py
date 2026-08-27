@@ -115,6 +115,18 @@ def capture_deviation() -> Iterator[list[NDArray[np.float32]]]:
         _capture.reset(token)
 
 
+def to_torchmcubes_axis_order(vertices: NDArray[np.float32]) -> NDArray[np.float32]:
+    """Reverse the vertex columns, because torchmcubes emits (z, y, x).
+
+    ``mcubes_cpu.cpp`` iterates z over ``vol.size(0)`` and x over ``vol.size(2)``
+    and then emits ``XYZ(x, y, z)``, so its output is the reverse of the array
+    index order scikit-image returns. TripoSR's ``MarchingCubeHelper.forward``
+    undoes that with ``v_pos[..., [2, 1, 0]]``; without this reversal that flip
+    mirrors the mesh instead of correcting it.
+    """
+    return np.ascontiguousarray(vertices[:, ::-1], dtype=np.float32)
+
+
 def marching_cubes(volume: Any, threshold: float) -> tuple[Any, Any]:
     """torchmcubes-compatible entry point: ``marching_cubes(vol, thresh)``.
 
@@ -128,12 +140,12 @@ def marching_cubes(volume: Any, threshold: float) -> tuple[Any, Any]:
         surface = marching_cubes_numpy(field, threshold)
         device = volume.device
         return (
-            torch.from_numpy(surface.vertices).to(device),
+            torch.from_numpy(to_torchmcubes_axis_order(surface.vertices)).to(device),
             torch.from_numpy(surface.faces.astype(np.int32, copy=False)).to(device),
         )
 
     surface = marching_cubes_numpy(np.asarray(volume, dtype=np.float32), threshold)
-    return surface.vertices, surface.faces
+    return to_torchmcubes_axis_order(surface.vertices), surface.faces
 
 
 def install(module_name: str = MODULE_NAME) -> types.ModuleType:

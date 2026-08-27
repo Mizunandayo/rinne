@@ -64,8 +64,8 @@ _NOTICE_TEXT: Final[dict[str, str]] = {
     "stub-pipeline": "Geometry came from the stub pipeline and is a placeholder shape.",
     "scale-assumed": "Scale was assumed, not measured. No fiducial marker was present.",
     "confidence-uncalibrated": "Confidence bands are documented guesses, not measured thresholds.",
-    "foreground-quality-unavailable": "Segmentation is not in this build, so foregroundQuality "
-    "is absent and the weights are renormalised over three components.",
+    "foreground-quality-unavailable": "This pipeline does not segment, so foregroundQuality is "
+    "absent and the weights are renormalised over three components.",
     "images-ignored": "More than one image was accepted; this build reconstructs from the first.",
     "material-weak-signal": "The material heuristic matched weakly. Treat mass as provisional.",
     "low-face-count": "The surface has too few faces to be meaningful, so confidence is floored.",
@@ -231,13 +231,24 @@ def _compute(
             measurements.volume_cubic_meters, measurements.extent
         ),
     }
+    weights = confidence.ConfidenceWeights(
+        field_decisiveness=settings.confidence_weight_field_decisiveness,
+        watertightness=settings.confidence_weight_watertightness,
+        volume_plausibility=settings.confidence_weight_volume_plausibility,
+        foreground_quality=settings.confidence_weight_foreground_quality,
+    )
+    if raw.foreground is None:
+        # No segmentation mask, so no fourth component and no weight for one.
+        weights = weights.without_foreground_quality()
+    else:
+        components["foregroundQuality"] = confidence.foreground_quality(
+            coverage=raw.foreground.coverage,
+            border_fraction=raw.foreground.border_fraction,
+        )
+
     breakdown = confidence.compose(
         components=components,
-        weights=confidence.ConfidenceWeights(
-            field_decisiveness=settings.confidence_weight_field_decisiveness,
-            watertightness=settings.confidence_weight_watertightness,
-            volume_plausibility=settings.confidence_weight_volume_plausibility,
-        ),
+        weights=weights,
         face_count=measurements.face_count,
         min_faces=settings.min_faces,
         low_max=settings.confidence_band_low_max,

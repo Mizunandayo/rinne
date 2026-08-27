@@ -90,7 +90,7 @@ $config = @{
         Memory      = '16Gi'
         Cpu         = '4'
         Gpu         = $true
-        Env         = @{ APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false'; PIPELINE_NAME = 'stub'; STORAGE_MODE = 'gcs' }
+        Env         = @{ APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false'; PIPELINE_NAME = 'triposr'; STORAGE_MODE = 'gcs' }
     }
     agent = @{
         Name        = 'rinne-agent'
@@ -164,8 +164,12 @@ steps:
     # cheap to fix here and expensive to debug on a deadline.
     env: ['DOCKER_BUILDKIT=1']
     args: ['build', '-f', '$($svc.Dockerfile)', '-t', '$image', '.']
+    timeout: '3600s'
 images:
   - '$image'
+# One hour, not the default ten minutes. The reconstruction image pulls ~2.8GB of
+# wheels plus 1.7GB of weights and pushes ~8GB; ten minutes is not close.
+timeout: '3600s'
 options:
   logging: CLOUD_LOGGING_ONLY
 "@

@@ -22,6 +22,9 @@ dependencies = [
     "numpy==2.5.2",
     "trimesh==5.0.0",
     "scikit-image==0.26.0",
+    # u2netp is a 4.5MB ONNX graph. This is a DEFAULT dependency, not a gpu one,
+    # so imaging/segmentation.py imports plainly and its maths is tested in CI.
+    "onnxruntime==1.29.0",
 ]
 
 [dependency-groups]
@@ -43,6 +46,12 @@ dev = [
 gpu = [
     "torch==2.13.0",
     "torchvision==0.28.0",
+    # What the vendored TripoSR tree imports. transformers is pinned to the last
+    # 4.x: 5.x renamed every ViT parameter, so model.ckpt no longer load_state_dicts.
+    "transformers==4.57.6",
+    "huggingface-hub==0.36.2",
+    "omegaconf==2.3.1",
+    "einops==0.8.2",
 ]
 
 [build-system]
@@ -125,6 +134,18 @@ follow_imports = "skip"
 # lets the type check run without a 2.5GB download.
 [[tool.mypy.overrides]]
 module = ["torch", "torch.*"]
+ignore_missing_imports = true
+
+# `tsr` is the vendored TripoSR tree. It is cloned into the image at a pinned
+# commit and exists on no machine that runs mypy, which is why it is Any here.
+[[tool.mypy.overrides]]
+module = ["tsr", "tsr.*"]
+ignore_missing_imports = true
+
+# onnxruntime ships no py.typed. Only three of its symbols are used, and every
+# value crossing back out of the session is re-typed by np.asarray at the call site.
+[[tool.mypy.overrides]]
+module = ["onnxruntime", "onnxruntime.*"]
 ignore_missing_imports = true
 
 # -- pytest ------------------------------------------------------------

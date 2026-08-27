@@ -78,6 +78,13 @@ WEIGHTS = confidence.ConfidenceWeights(
     volume_plausibility=0.1177,
 )
 
+FULL_WEIGHTS = confidence.ConfidenceWeights(
+    field_decisiveness=0.45,
+    watertightness=0.30,
+    volume_plausibility=0.10,
+    foreground_quality=0.15,
+)
+
 
 def _compose(
     components: dict[str, float], *, face_count: int = 2000
@@ -118,12 +125,93 @@ def test_the_weights_that_produced_the_score_ship_with_it() -> None:
     assert breakdown.score == 1.0
 
 
-def test_foreground_quality_is_absent_until_segmentation_ships() -> None:
+def test_foreground_quality_is_absent_when_the_pipeline_does_not_segment() -> None:
     breakdown = _compose(
         {"fieldDecisiveness": 0.5, "watertightness": 0.5, "volumePlausibility": 0.5}
     )
     assert "foregroundQuality" not in breakdown.components
     assert "foregroundQuality" not in breakdown.weights
+
+
+def test_dropping_foreground_quality_reproduces_the_day_two_weights() -> None:
+    """The renormalisation moved from the environment into code, unchanged.
+
+    0.45 / 0.85 rounds to 0.5294 and 0.30 / 0.85 to 0.3529; the naive third
+    value is 0.1176 and sums to 0.9999, so the residual is absorbed by
+    volume_plausibility and the result is 0.1177 exactly, as Day 2 shipped.
+    """
+    assert FULL_WEIGHTS.without_foreground_quality() == WEIGHTS
+    assert round(sum(WEIGHTS.as_payload().values()), 4) == 1.0
+    # Idempotent: a three-weight set has nothing to drop.
+    assert WEIGHTS.without_foreground_quality() is WEIGHTS
+
+
+def test_the_four_component_score_uses_the_full_weights() -> None:
+    breakdown = confidence.compose(
+        components={
+            "fieldDecisiveness": 0.8,
+            "watertightness": 1.0,
+            "volumePlausibility": 0.5,
+            "foregroundQuality": 0.6,
+        },
+        weights=FULL_WEIGHTS,
+        face_count=2000,
+        min_faces=100,
+        low_max=0.45,
+        high_min=0.70,
+        calibrated=True,
+    )
+    # 0.8*0.45 + 1.0*0.30 + 0.5*0.10 + 0.6*0.15 = 0.80
+    assert breakdown.score == 0.80
+    assert breakdown.band == "high"
+    assert breakdown.calibrated is True
+    assert set(breakdown.weights) == set(breakdown.components)
+
+
+def test_a_component_without_a_weight_is_a_refusal_not_a_wrong_number() -> None:
+    """The transmitted arithmetic has to be reproducible by whoever holds it."""
+    with pytest.raises(ValueError, match="same names"):
+        confidence.compose(
+            components={
+                "fieldDecisiveness": 1.0,
+                "watertightness": 1.0,
+                "volumePlausibility": 1.0,
+                "foregroundQuality": 1.0,
+            },
+            weights=WEIGHTS,
+            face_count=2000,
+            min_faces=100,
+            low_max=0.45,
+            high_min=0.70,
+            calibrated=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("coverage", "border_fraction", "expected"),
+    [
+        (0.35, 0.0, 1.0),  # the target framing, nothing touching the edge
+        (0.0, 0.0, 0.0),  # nothing found
+        (0.70, 0.0, 0.0),  # subject fills twice the target share
+        (0.35, 0.25, 0.0),  # a quarter of the border ring is subject
+        (0.35, 0.125, 0.5),  # half the cropping budget spent
+        (0.175, 0.0, 0.5),  # half the framing budget spent
+    ],
+)
+def test_foreground_quality_multiplies_framing_by_cropping(
+    coverage: float, border_fraction: float, expected: float
+) -> None:
+    assert (
+        confidence.foreground_quality(coverage=coverage, border_fraction=border_fraction)
+        == expected
+    )
+
+
+def test_either_framing_failure_alone_can_take_the_component_to_zero() -> None:
+    # Perfect coverage cannot rescue a subject running off the frame edge.
+    assert confidence.foreground_quality(coverage=0.35, border_fraction=1.0) == 0.0
+    # Perfect cropping cannot rescue a subject that is not there.
+    assert confidence.foreground_quality(coverage=0.001, border_fraction=0.0) == 0.0029
 
 
 def test_too_few_faces_floors_the_score_but_still_reports_why() -> None:

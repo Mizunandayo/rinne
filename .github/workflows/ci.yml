@@ -161,12 +161,27 @@ jobs:
         run: uv run pytest
 
       - name: Audit dependencies
-        # --all-groups HERE, unlike the install above: torch and torchvision are
+        # --all-groups HERE, unlike the install above: torch and transformers are
         # pinned in pyproject, so they must be audited even though CI never
         # installs them. Exporting is metadata only and downloads nothing.
+        #
+        # FOUR SCOPED EXCEPTIONS, and the gate stays live for everything else.
+        # transformers is pinned to 4.57.6 because 5.x renamed every ViT
+        # parameter and TripoSR's model.ckpt stops loading. All four advisories
+        # are "loading an attacker-supplied model, checkpoint or config executes
+        # code": X-CLIP checkpoint conversion, Trainer._load_rng_state,
+        # AutoModelForCausalLM with a hostile config.json, and LightGlue. None
+        # reaches this service: the only model it loads is baked into the image
+        # at a pinned revision with a verified sha256, and the runtime sets
+        # HF_HUB_OFFLINE=1 so it cannot fetch another one.
         run: |
           uv export --no-emit-project --all-groups --format requirements-txt --quiet > /tmp/reconstruction-requirements.txt
-          uv run pip-audit --strict --progress-spinner=off --requirement /tmp/reconstruction-requirements.txt
+          uv run pip-audit --strict --progress-spinner=off \
+            --requirement /tmp/reconstruction-requirements.txt \
+            --ignore-vuln PYSEC-2025-217 \
+            --ignore-vuln PYSEC-2026-2288 \
+            --ignore-vuln PYSEC-2026-2289 \
+            --ignore-vuln PYSEC-2026-2290
 
   # ────────────────────────────────────────────────────────────────
   contracts-drift:

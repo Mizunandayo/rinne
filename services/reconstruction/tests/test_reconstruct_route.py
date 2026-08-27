@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
+
+from rinne_reconstruction.pipeline.base import (
+    Device,
+    ForegroundMeasurements,
+    PipelineName,
+    RawReconstruction,
+    Reconstructor,
+)
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[3]
@@ -295,3 +306,79 @@ def test_timings_are_reported_for_every_stage(client: TestClient, image_bytes, m
     assert set(timings) == {"validationMs", "inferenceMs", "meshMs", "uploadMs", "totalMs"}
     assert all(value >= 0 for value in timings.values())
     assert timings["totalMs"] >= timings["inferenceMs"]
+
+
+class _SegmentingStub:
+    """The stub, plus the two numbers a segmentation mask would have measured.
+
+    Stands in for TripoSR so the four-component path is covered by a test that
+    needs neither torch, nor a GPU, nor 1.7GB of weights.
+    """
+
+    def __init__(self, inner: Reconstructor, *, coverage: float, border_fraction: float) -> None:
+        self._inner = inner
+        self._foreground = ForegroundMeasurements(
+            coverage=coverage, border_fraction=border_fraction
+        )
+
+    @property
+    def name(self) -> PipelineName:
+        return self._inner.name
+
+    @property
+    def version(self) -> str:
+        return self._inner.version
+
+    @property
+    def device(self) -> Device:
+        return self._inner.device
+
+    def reconstruct(self, image: Image.Image) -> RawReconstruction:
+        return replace(self._inner.reconstruct(image), foreground=self._foreground)
+
+
+def test_a_segmenting_pipeline_reports_four_components_and_the_full_weights(
+    app: Any, image_bytes, multipart
+) -> None:
+    """The Day 3 restoration, asserted end to end through the route.
+
+    0.45 / 0.30 / 0.15 / 0.10 with no schemaVersion bump, because the weights
+    ship inside the payload - which is the entire reason they are there.
+    """
+    with TestClient(app) as client:
+        app.state.pipeline = _SegmentingStub(app.state.pipeline, coverage=0.35, border_fraction=0.0)
+        body = _post(
+            client, **multipart(request_document=DOCUMENT, images=[(image_bytes(), JPEG)])
+        ).json()
+
+    block = body["confidence"]
+    assert set(block["components"]) == {
+        "fieldDecisiveness",
+        "watertightness",
+        "volumePlausibility",
+        "foregroundQuality",
+    }
+    assert block["weights"] == {
+        "fieldDecisiveness": 0.45,
+        "watertightness": 0.30,
+        "volumePlausibility": 0.10,
+        "foregroundQuality": 0.15,
+    }
+    assert block["components"]["foregroundQuality"] == 1.0
+
+    recomputed = sum(
+        block["weights"][name] * block["components"][name] for name in block["weights"]
+    )
+    assert round(recomputed, 4) == block["score"]
+    assert "foreground-quality-unavailable" not in {n["code"] for n in body["notices"]}
+
+
+def test_a_badly_framed_photograph_pushes_the_score_down(app: Any, image_bytes, multipart) -> None:
+    """A subject running off the frame edge is evidence, and it costs score."""
+    with TestClient(app) as client:
+        app.state.pipeline = _SegmentingStub(app.state.pipeline, coverage=0.95, border_fraction=0.8)
+        body = _post(
+            client, **multipart(request_document=DOCUMENT, images=[(image_bytes(), JPEG)])
+        ).json()
+
+    assert body["confidence"]["components"]["foregroundQuality"] == 0.0

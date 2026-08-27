@@ -9,8 +9,7 @@ from typing import Literal, Self
 from pydantic import Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Confidence components are rounded to 4dp, so the weights are compared at 4dp
-# too. Anything finer is comparing float noise.
+# Confidence components are rounded to 4dp, so the weights are compared at 4dp too.
 _WEIGHT_PRECISION = 4
 
 
@@ -41,9 +40,7 @@ class Settings(BaseSettings):
     # OpenAPI/Swagger. Off in production - this service is IAM-private.
     enable_docs: bool = False
 
-    # -- Request limits ------------------------------------------------
-    # 25 MiB, under Cloud Run's 32 MiB request ceiling. Starlette has no
-    # built-in body cap;
+    # Request limits
     max_request_bytes: int = Field(default=26_214_400, ge=1024, le=33_554_432)
     max_metadata_chars: int = Field(default=4096, ge=0, le=65_536)
     max_images: int = Field(default=4, ge=1, le=8)
@@ -52,18 +49,17 @@ class Settings(BaseSettings):
     max_image_edge: int = Field(default=1536, ge=64, le=8192)
     request_timeout_seconds: float = Field(default=300.0, gt=0, le=900)
 
-    # -- Mesh normalisation --------------------------------------------
+    # Mesh normalisation
     assumed_longest_dimension_meters: float = Field(default=0.30, gt=0, le=5)
     # Solid-versus-shell discount in the mass estimate. A documented guess.
     # Day 8's refit replaces it with a measurement.
     solid_fraction: float = Field(default=0.55, gt=0, le=1)
 
-    # -- Confidence ----------------------------------------------------
-    # Day 2 ships THREE components. The full weights are 0.45 / 0.30 / 0.15 /
-    # 0.10; with foregroundQuality absent the remaining three are rescaled to
-    confidence_weight_field_decisiveness: float = Field(default=0.5294, ge=0, le=1)
-    confidence_weight_watertightness: float = Field(default=0.3529, ge=0, le=1)
-    confidence_weight_volume_plausibility: float = Field(default=0.1177, ge=0, le=1)
+    # Confidence
+    confidence_weight_field_decisiveness: float = Field(default=0.45, ge=0, le=1)
+    confidence_weight_watertightness: float = Field(default=0.30, ge=0, le=1)
+    confidence_weight_foreground_quality: float = Field(default=0.15, gt=0, lt=1)
+    confidence_weight_volume_plausibility: float = Field(default=0.10, ge=0, le=1)
 
     ambiguity_band_ratio: float = Field(default=0.15, gt=0, le=1)
     ambiguity_reference: float = Field(default=0.10, gt=0, le=1)
@@ -76,11 +72,24 @@ class Settings(BaseSettings):
     # Below this face count there is nothing there to be confident about, so
     min_faces: int = Field(default=100, ge=0, le=100_000)
 
-    # -- Pipeline ------------------------------------------------------
+    # Pipeline
     pipeline_name: Literal["stub", "triposr"] = "stub"
     stub_resolution: int = Field(default=64, ge=16, le=192)
 
-    # -- Storage -------------------------------------------------------
+    # Baked into the image by the Dockerfile's source and weights stages.
+    triposr_source_dir: str = Field(default="/opt/triposr/src", min_length=1, max_length=256)
+    triposr_weights_dir: str = Field(default="/opt/triposr/weights", min_length=1, max_length=256)
+    triposr_commit_sha: str = Field(
+        default="107cefdc244c39106fa830359024f6a2f1c78871", pattern=r"^[0-9a-f]{40}$"
+    )
+    triposr_marching_cubes_resolution: int = Field(default=256, ge=32, le=512)
+    triposr_chunk_size: int = Field(default=8192, ge=0, le=1_048_576)
+    triposr_foreground_ratio: float = Field(default=0.85, gt=0, le=1)
+    segmentation_model_path: str = Field(
+        default="/opt/u2netp/u2netp.onnx", min_length=1, max_length=256
+    )
+
+    # Storage
     storage_mode: Literal["gcs", "memory"] = "gcs"
     gcs_bucket: str = Field(default="rinne-artifacts-rinnehackathon", min_length=3, max_length=63)
     gcs_object_prefix: str = Field(default="meshes", min_length=1, max_length=64)
@@ -93,6 +102,7 @@ class Settings(BaseSettings):
         total = round(
             self.confidence_weight_field_decisiveness
             + self.confidence_weight_watertightness
+            + self.confidence_weight_foreground_quality
             + self.confidence_weight_volume_plausibility,
             _WEIGHT_PRECISION,
         )

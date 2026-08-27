@@ -27,19 +27,27 @@ logger = logging.getLogger(__name__)
 
 
 def build_pipeline(settings: Settings) -> Reconstructor:
-    """Pick a reconstructor.
+    """Pick a reconstructor, and fail loudly if the chosen one cannot be built.
 
-    Only "stub" is buildable in this revision. "triposr" is in the config
-    Literal and in the contract enum because Day 3 adds it - and this function
-    refuses loudly rather than silently falling back to the stub, because a
-    silent fallback is exactly how a demo ends up claiming a model ran when it
-    did not.
+    There is deliberately no fallback: a TripoSR build that quietly degrades to
+    the stub is exactly how a demo ends up claiming a model ran when it did
+    not. Every failure below raises and the revision never receives traffic.
     """
     if settings.pipeline_name == "stub":
         return StubReconstructor(resolution=settings.stub_resolution)
-    raise RuntimeError(
-        f"pipeline '{settings.pipeline_name}' is not available in this build. "
-        "Set PIPELINE_NAME=stub."
+
+    # Imported here rather than at module scope: torch and the vendored TripoSR
+    # tree exist only in the GPU image, and the stub path must import without them.
+    from rinne_reconstruction.pipeline.triposr import build_triposr_reconstructor
+
+    return build_triposr_reconstructor(
+        source_dir=settings.triposr_source_dir,
+        weights_dir=settings.triposr_weights_dir,
+        segmentation_model_path=settings.segmentation_model_path,
+        commit_sha=settings.triposr_commit_sha,
+        marching_cubes_resolution=settings.triposr_marching_cubes_resolution,
+        chunk_size=settings.triposr_chunk_size,
+        foreground_ratio=settings.triposr_foreground_ratio,
     )
 
 

@@ -1,4 +1,4 @@
-"""The reconstructor interface. One method, so the stub and TripoSR are swappable."""
+"""The reconstructor interface. one method, so the stub and triposr are swappable."""
 
 from __future__ import annotations
 
@@ -14,6 +14,18 @@ Device = Literal["cpu", "cuda"]
 
 
 @dataclass(frozen=True)
+class ForegroundMeasurements:
+    """What the segmentation mask says about how the object was photographed.
+
+    Lives here rather than in imaging/ because it is a field of the pipeline's
+    own output, and a pipeline that does not segment reports None instead.
+    """
+
+    coverage: float
+    border_fraction: float
+
+
+@dataclass(frozen=True)
 class RawReconstruction:
     """A surface straight out of marching cubes, before any normalisation."""
 
@@ -22,6 +34,7 @@ class RawReconstruction:
     vertex_colors: NDArray[np.uint8] | None
     deviation: NDArray[np.float32]
     seed: int
+    foreground: ForegroundMeasurements | None = None
 
 
 @runtime_checkable

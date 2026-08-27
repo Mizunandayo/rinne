@@ -21,17 +21,22 @@ def test_defaults_match_the_spec_appendix() -> None:
     assert settings.gcs_bucket == "rinne-artifacts-rinnehackathon"
 
 
-def test_the_day_two_weights_sum_to_one() -> None:
-    """The renormalised three-component weights, at 4dp.
+def test_the_full_four_component_weights_sum_to_one() -> None:
+    """0.45 / 0.30 / 0.15 / 0.10, the weights foregroundQuality restored.
 
-    volume_plausibility is 0.1177 rather than 0.1176 because the residual has
-    to go somewhere; the naive value sums to 0.9999 and the validator below
-    rejects it. This test is what makes that a rule instead of a comment.
+    A pipeline that does not segment never sees these four: it gets them
+    renormalised over three in code, which is what removed the hand-computed
+    0.5294 / 0.3529 / 0.1177 from the environment.
     """
     settings = Settings()
+    assert settings.confidence_weight_field_decisiveness == 0.45
+    assert settings.confidence_weight_watertightness == 0.30
+    assert settings.confidence_weight_foreground_quality == 0.15
+    assert settings.confidence_weight_volume_plausibility == 0.10
     total = (
         settings.confidence_weight_field_decisiveness
         + settings.confidence_weight_watertightness
+        + settings.confidence_weight_foreground_quality
         + settings.confidence_weight_volume_plausibility
     )
     assert round(total, 4) == 1.0
@@ -40,6 +45,19 @@ def test_the_day_two_weights_sum_to_one() -> None:
 def test_weights_that_do_not_sum_to_one_are_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(confidence_weight_volume_plausibility=0.1176)
+
+
+def test_the_triposr_pins_are_configuration_not_code() -> None:
+    """The commit SHA is reported as pipeline.version on every real response."""
+    settings = Settings()
+    assert settings.triposr_commit_sha == "107cefdc244c39106fa830359024f6a2f1c78871"
+    assert settings.triposr_marching_cubes_resolution == 256
+    assert settings.triposr_foreground_ratio == 0.85
+
+
+def test_a_commit_sha_that_is_not_a_commit_sha_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(triposr_commit_sha="main")
 
 
 def test_bands_must_be_ordered() -> None:

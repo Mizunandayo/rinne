@@ -88,3 +88,26 @@ def test_the_torch_facing_entry_point_accepts_a_plain_array() -> None:
     assert isinstance(vertices, np.ndarray)
     assert isinstance(faces, np.ndarray)
     assert faces.shape[0] > 100
+
+
+def test_the_torch_facing_entry_point_emits_torchmcubes_axis_order() -> None:
+    """torchmcubes returns (z, y, x); scikit-image returns array index order.
+
+    mcubes_cpu.cpp iterates z over vol.size(0) and x over vol.size(2), then
+    emits XYZ(x, y, z). TripoSR corrects for that with v_pos[..., [2, 1, 0]],
+    so a shim that returned scikit-image's order unchanged would have that flip
+    MIRROR the mesh instead of correcting it. Asserted on an asymmetric blob,
+    because a symmetric one cannot tell the two conventions apart.
+    """
+    resolution = 32
+    centre = (24, 8, 8)
+    index = np.indices((resolution, resolution, resolution)).astype(np.float32)
+    radius = np.sqrt(sum((index[axis] - centre[axis]) ** 2 for axis in range(3)))
+    field = np.where(radius < 5.0, 1.0, 0.0).astype(np.float32)
+
+    vertices, _faces = shim.marching_cubes(field, 0.5)
+    expected = np.array(centre, dtype=np.float32)
+
+    assert np.allclose(vertices[:, [2, 1, 0]].mean(axis=0), expected, atol=0.5)
+    # Without the reversal the same flip lands the blob on the wrong axis.
+    assert not np.allclose(vertices.mean(axis=0), expected, atol=0.5)

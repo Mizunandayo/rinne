@@ -1,16 +1,4 @@
-"""The confidence scalar: three measured components, transmitted weights.
-
-Every component is measured from something the pipeline actually produced, is
-bounded to [0,1], and is rounded to 4dp so a test can assert an exact value.
-
-THE WEIGHTS SHIP INSIDE THE RESPONSE. That is not decoration: it is what makes
-the score recomputable by a judge, by the agent's confidence gate, and by the
-contract test - and it is what lets foregroundQuality be added on Day 3 as a
-config change rather than a schemaVersion bump.
-
-THE BANDS ARE UNCALIBRATED. The two thresholds are documented guesses until
-Day 3 measures them against three real objects, and the payload says so.
-"""
+"""The confidence scalar: four measured components, transmitted weights."""
 
 from __future__ import annotations
 
@@ -30,6 +18,10 @@ _VOLUME_CEILING: Final = 1.0
 #: How hard a boundary edge is punished. At 12.5% boundary edges the score is 0.
 _BOUNDARY_PENALTY: Final = 8.0
 
+
+_FOREGROUND_TARGET_COVERAGE: Final = 0.35
+_FOREGROUND_BORDER_PENALTY: Final = 4.0
+
 Band = Literal["low", "medium", "high"]
 
 
@@ -40,13 +32,38 @@ class ConfidenceWeights:
     field_decisiveness: float
     watertightness: float
     volume_plausibility: float
+    foreground_quality: float | None = None
 
     def as_payload(self) -> dict[str, float]:
-        return {
+        payload = {
             "fieldDecisiveness": self.field_decisiveness,
             "watertightness": self.watertightness,
             "volumePlausibility": self.volume_plausibility,
         }
+        if self.foreground_quality is not None:
+            payload["foregroundQuality"] = self.foreground_quality
+        return payload
+
+    def without_foreground_quality(self) -> ConfidenceWeights:
+        """Rescale the remaining three so they still sum to exactly 1.0 at 4dp.
+
+        The residual is absorbed by volume_plausibility rather than spread, so
+        the result is one exact set of numbers rather than a rounding argument.
+        """
+        if self.foreground_quality is None:
+            return self
+
+        remaining = 1.0 - self.foreground_quality
+        if remaining <= 0.0:
+            raise ValueError("the foregroundQuality weight leaves nothing to rescale")
+
+        field = round(self.field_decisiveness / remaining, PRECISION)
+        water = round(self.watertightness / remaining, PRECISION)
+        return ConfidenceWeights(
+            field_decisiveness=field,
+            watertightness=water,
+            volume_plausibility=round(1.0 - field - water, PRECISION),
+        )
 
 
 @dataclass(frozen=True)
@@ -81,8 +98,6 @@ def field_decisiveness(
     spread (p90) rather than as an absolute number, because the field's units
     are whatever the pipeline chose - an absolute band would mean something
     different for the stub than for TripoSR.
-
-    UNCALIBRATED: band_ratio and reference are guesses until Day 3.
     """
     if deviation.size == 0:
         return 0.0
@@ -103,6 +118,20 @@ def watertightness(*, is_watertight: bool, boundary_edge_ratio: float) -> float:
     if is_watertight:
         return 1.0
     return _round(1.0 - boundary_edge_ratio * _BOUNDARY_PENALTY)
+
+
+def foreground_quality(*, coverage: float, border_fraction: float) -> float:
+    """framing * cropping, measured from the segmentation mask.
+
+    Multiplied rather than averaged: a subject too small to reconstruct and a
+    subject running off the edge of the frame are independently fatal, so
+    either one alone has to be able to take the component to zero.
+    """
+    framing = _clamp(
+        1.0 - abs(coverage - _FOREGROUND_TARGET_COVERAGE) / _FOREGROUND_TARGET_COVERAGE
+    )
+    cropping = _clamp(1.0 - min(1.0, border_fraction * _FOREGROUND_BORDER_PENALTY))
+    return _round(framing * cropping)
 
 
 def volume_plausibility(volume: float, extent: tuple[float, float, float]) -> float:
@@ -150,6 +179,9 @@ def compose(
     reason is visible rather than hidden behind a single number.
     """
     weight_map = weights.as_payload()
+    if set(weight_map) != set(components):
+        raise ValueError("confidence components and weights must cover the same names")
+
     raw = sum(weight_map[name] * components[name] for name in weight_map)
     score = 0.0 if face_count < min_faces else _round(raw)
 

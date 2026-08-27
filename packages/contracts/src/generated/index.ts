@@ -11,5 +11,7 @@
  */
 
 export type * from "./health.js";
+export type * from "./reconstruction-request.js";
+export type * from "./reconstruction-result.js";
 export type * from "./scene-description.js";
 export * from "./schemas.js";

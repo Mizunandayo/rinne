@@ -24,7 +24,10 @@
 [CmdletBinding()]
 param(
     [string]$ProjectId = "rinnehackathon",
-    [string]$Region    = "asia-southeast1"
+    [string]$Region    = "asia-southeast1",
+    # OFF by default. Everything else here is free; this one wakes the L4 for
+    # roughly 90 seconds and $0.18. Run it before a recording, not routinely.
+    [switch]$IncludeGpu
 )
 
 . "$PSScriptRoot\lib\Rinne.Common.ps1"
@@ -82,7 +85,7 @@ function Test-Assert {
 
 Write-Step "Resolving service URLs"
 $urls = @{}
-foreach ($name in @('rinne-web','rinne-physics','rinne-agent')) {
+foreach ($name in @('rinne-web','rinne-physics','rinne-agent','rinne-reconstruction')) {
     $url = ((& gcloud run services describe $name --region=$Region --project=$ProjectId `
         --format="value(status.url)" 2>$null) -join '').Trim()
     if ($LASTEXITCODE -ne 0 -or -not $url) {
@@ -118,6 +121,12 @@ try {
         -Condition ($response.StatusCode -eq 200) -Detail "got $($response.StatusCode)"
 
     foreach ($entry in $manifest.services) {
+        # A cold service was deliberately not probed, so it is neither healthy
+        # nor broken. Section 7 checks its shape; -IncludeGpu wakes it.
+        if ((Get-Prop $entry "probed" $true) -eq $false) {
+            Write-Ok "$(Get-Prop $entry 'service' '?') not probed (cold, by design)"
+            continue
+        }
         $reason = Get-Prop $entry "reason" "-"
         Test-Assert -Name "$(Get-Prop $entry 'service' '?') reachable and ok" `
             -Condition ((Get-Prop $entry "reachable" $false) -eq $true -and (Get-Prop $entry "status" "") -eq 'ok') `
@@ -131,7 +140,7 @@ try {
 
 # -- 3-4. Private services refuse anonymous callers -------------------
 Write-Step "3-4. Private services reject unauthenticated callers"
-foreach ($name in @('rinne-physics','rinne-agent')) {
+foreach ($name in @('rinne-physics','rinne-agent','rinne-reconstruction')) {
     $status = 0
     try {
         $r = Invoke-WebRequest -Uri "$($urls[$name])/livez" -TimeoutSec 20 -UseBasicParsing
@@ -175,7 +184,7 @@ $projectNumber = ((& gcloud projects describe $ProjectId --format="value(project
 $global:LASTEXITCODE = 0
 if ($projectNumber) { $defaultSa = "$projectNumber-compute@developer.gserviceaccount.com" }
 
-foreach ($name in @('rinne-web','rinne-physics','rinne-agent')) {
+foreach ($name in @('rinne-web','rinne-physics','rinne-agent','rinne-reconstruction')) {
     $sa = ((& gcloud run services describe $name --region=$Region --project=$ProjectId `
         --format="value(spec.template.spec.serviceAccountName)" 2>$null) -join '').Trim()
     $global:LASTEXITCODE = 0
@@ -184,10 +193,95 @@ foreach ($name in @('rinne-web','rinne-physics','rinne-agent')) {
         -Detail "got '$sa'. The default compute SA carries project Editor."
 }
 
+# -- 7. Reconstruction service ----------------------------------------
+Write-Step "7. rinne-reconstruction shape and storage"
+
+$reconRaw = & gcloud run services describe rinne-reconstruction --region=$Region --project=$ProjectId `
+    --format="value(spec.template.spec.containers[0].resources.limits)" 2>$null
+$global:LASTEXITCODE = 0
+Test-Assert -Name "rinne-reconstruction requests an nvidia-l4" `
+    -Condition ("$reconRaw" -match 'nvidia.com/gpu') `
+    -Detail "resource limits read '$reconRaw'. No GPU attached means the L4 flags were dropped."
+
+$reconMax = ((& gcloud run services describe rinne-reconstruction --region=$Region --project=$ProjectId `
+    --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/maxScale'])" 2>$null) -join '').Trim()
+$global:LASTEXITCODE = 0
+# The approved quota is exactly 1. A higher value deploys and then fails at scale.
+Test-Assert -Name "rinne-reconstruction max-instances is 1" `
+    -Condition ($reconMax -eq '1') -Detail "got '$reconMax'; approved L4 quota is 1"
+
+$bucket = "rinne-artifacts-$ProjectId"
+$pap = ((& gcloud storage buckets describe "gs://$bucket" --project=$ProjectId `
+    --format="value(public_access_prevention)" 2>$null) -join '').Trim()
+$global:LASTEXITCODE = 0
+Test-Assert -Name "artifacts bucket enforces public access prevention" `
+    -Condition ($pap -eq 'enforced') -Detail "got '$pap'"
+
+$ubla = ((& gcloud storage buckets describe "gs://$bucket" --project=$ProjectId `
+    --format="value(uniform_bucket_level_access)" 2>$null) -join '').Trim()
+$global:LASTEXITCODE = 0
+Test-Assert -Name "artifacts bucket uses uniform bucket-level access" `
+    -Condition ($ubla -eq 'True') -Detail "got '$ubla'"
+
+$iam = (& gcloud storage buckets get-iam-policy "gs://$bucket" --project=$ProjectId `
+    --format=json 2>$null) -join ''
+$global:LASTEXITCODE = 0
+# Asymmetric on purpose: reconstruction writes and never reads, web reads and
+# never writes. objectAdmin on either one is the failure this catches.
+Test-Assert -Name "rinne-reconstruction-sa has objectCreator, not objectAdmin" `
+    -Condition ($iam -match 'objectCreator' -and $iam -notmatch 'objectAdmin') `
+    -Detail "bucket IAM does not match the documented asymmetry"
+Test-Assert -Name "rinne-web-sa has objectViewer" `
+    -Condition ($iam -match 'objectViewer') -Detail "bucket IAM is missing the read binding"
+
+if ($IncludeGpu) {
+    Write-Step "7b. Waking the L4 (this costs about `$0.18)"
+    $audience = $urls['rinne-reconstruction']
+    # gcloud is authenticated as a USER account here, and --audiences requires a
+    # service account, so impersonate the identity web actually uses.
+    $sa = "rinne-web-sa@$ProjectId.iam.gserviceaccount.com"
+    # Impersonation prints a WARNING to stderr, and 5.1 turns redirected native
+    # stderr into ErrorRecords that $ErrorActionPreference=Stop makes terminating.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $raw = & gcloud auth print-identity-token `
+            --impersonate-service-account=$sa --audiences=$audience 2>$null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    $global:LASTEXITCODE = 0
+    $token = ((@($raw) | Where-Object { $_ -is [string] }) -join '').Trim()
+
+    if (-not $token) {
+        Test-Assert -Name "minted an ID token for rinne-reconstruction" -Condition $false `
+            -Detail "impersonation failed. Grant it once: gcloud iam service-accounts add-iam-policy-binding $sa --member=user:YOUR_EMAIL --role=roles/iam.serviceAccountTokenCreator --project=$ProjectId"
+    } else {
+        try {
+            $r = Invoke-WebRequest -Uri "$audience/readyz" -TimeoutSec 240 -UseBasicParsing `
+                -Headers @{ Authorization = "Bearer $token" }
+            $body = $r.Content | ConvertFrom-Json
+            Test-Assert -Name "rinne-reconstruction answers /readyz when authenticated" `
+                -Condition ($r.StatusCode -eq 200 -and (Get-Prop $body 'status' '') -eq 'ok') `
+                -Detail "HTTP $($r.StatusCode) status=$(Get-Prop $body 'status' '?')"
+            $pipeline = ($body.dependencies | Where-Object { $_.name -eq 'pipeline' })
+            Test-Assert -Name "reconstruction reports which pipeline is loaded" `
+                -Condition ([bool](Get-Prop $pipeline 'detail' '')) `
+                -Detail "readyz did not report a pipeline dependency"
+            Write-Ok "pipeline: $(Get-Prop $pipeline 'detail' 'unknown')"
+        } catch {
+            Test-Assert -Name "rinne-reconstruction answers an authenticated /readyz" `
+                -Condition $false -Detail "HTTP $(Get-HttpStatus $_) - $($_.Exception.Message)"
+        }
+    }
+} else {
+    Write-Ok "GPU wake skipped. Re-run with -IncludeGpu before a recording."
+}
+
 # -- Result -----------------------------------------------------------
 Write-Host ""
 if ($failures.Count -eq 0) {
-    Write-Host "  Day 1 Definition of Done: ALL CHECKS PASSED" -ForegroundColor Green
+    Write-Host "  Definition of Done: ALL CHECKS PASSED" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Manifest page: $($urls['rinne-web'])/manifest" -ForegroundColor White
     Write-Host ""

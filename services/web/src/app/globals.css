@@ -518,3 +518,290 @@ button:disabled,
   border-radius: var(--rinne-radius);
   font-weight: var(--rinne-weight-medium);
 }
+
+/* scan, viewer, confidence */
+
+.rinne-status[data-fill="dashed"] .rinne-status-mark {
+  background-image: repeating-linear-gradient(45deg, var(--rinne-ink) 0 3px, transparent 3px 6px);
+}
+
+.rinne-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rinne-space-2);
+  font-weight: var(--rinne-weight-semibold);
+  color: var(--rinne-ink);
+  text-decoration: none;
+  border-bottom: 2px solid var(--rinne-ink);
+  padding-bottom: 2px;
+  width: fit-content;
+  transition: transform var(--rinne-dur-settle) var(--rinne-ease-settle);
+}
+.rinne-inline-link:hover {
+  transform: translateX(-3px);
+}
+
+.rinne-manifest-actions {
+  display: flex;
+  gap: var(--rinne-space-3);
+  padding-top: var(--rinne-space-2);
+}
+
+.rinne-manifest-cold {
+  display: flex;
+  align-items: center;
+  gap: var(--rinne-space-4);
+  padding: var(--rinne-space-4);
+  border: 2px dashed var(--rinne-ink);
+  border-radius: var(--rinne-radius);
+}
+.rinne-manifest-cold > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-1);
+}
+
+.rinne-scan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-8);
+  padding-block: var(--rinne-space-16);
+}
+
+.rinne-scan-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-3);
+  max-width: 62ch;
+}
+
+.rinne-scan-lede {
+  font-size: var(--rinne-text-body);
+  line-height: 1.6;
+}
+
+.rinne-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-4);
+}
+
+/* The camera surface is the viewer surface: dark ground, light line work. */
+.rinne-capture-stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  max-height: 60vh;
+  background-color: var(--rinne-viewer);
+  border: 1px solid var(--rinne-border);
+  border-radius: var(--rinne-radius);
+  overflow: hidden;
+}
+
+.rinne-capture-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rinne-capture-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--rinne-space-6);
+  text-align: center;
+  color: var(--rinne-ink-inverse);
+  font-weight: var(--rinne-weight-medium);
+}
+
+.rinne-capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rinne-space-3);
+}
+
+.rinne-scan-working {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-4);
+  padding: var(--rinne-space-6);
+  border: 1px solid var(--rinne-border);
+  border-left: 4px solid var(--rinne-ink);
+  border-radius: var(--rinne-radius);
+  max-width: 62ch;
+}
+
+.rinne-scan-error {
+  display: flex;
+  align-items: center;
+  gap: var(--rinne-space-4);
+  padding: var(--rinne-space-4);
+  border: 2px solid var(--rinne-ink);
+  border-radius: var(--rinne-radius);
+}
+.rinne-scan-error > div {
+  flex: 1;
+}
+.rinne-scan-error-rule {
+  font-weight: var(--rinne-weight-semibold);
+}
+
+.rinne-scan-result {
+  display: grid;
+  gap: var(--rinne-space-6);
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .rinne-scan-result {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rinne-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-2);
+}
+
+.rinne-viewer-stage {
+  aspect-ratio: 4 / 3;
+  min-height: 320px;
+  background-color: var(--rinne-viewer);
+  border-radius: var(--rinne-radius);
+  overflow: hidden;
+  cursor: grab;
+}
+.rinne-viewer-stage:active {
+  cursor: grabbing;
+}
+
+.rinne-viewer-note {
+  padding: var(--rinne-space-3);
+  background-color: var(--rinne-panel);
+  border-left: 3px solid var(--rinne-ink);
+  font-weight: var(--rinne-weight-medium);
+}
+
+.rinne-viewer-hint {
+  text-align: right;
+}
+
+.rinne-confidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-3);
+  padding: var(--rinne-space-6);
+  border: 1px solid var(--rinne-border);
+  border-left: 4px solid var(--rinne-ink);
+  border-radius: var(--rinne-radius);
+}
+
+.rinne-confidence-score {
+  font-size: var(--rinne-text-display);
+  font-weight: var(--rinne-weight-bold);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.rinne-confidence-band {
+  font-size: var(--rinne-text-body);
+  font-weight: var(--rinne-weight-medium);
+}
+
+/* Monochrome by section 11. Filled ink on an #E0E0E0 track, never a hue. */
+.rinne-meter {
+  height: 10px;
+  background-color: var(--rinne-border);
+  border-radius: var(--rinne-radius);
+  overflow: hidden;
+}
+.rinne-meter-small {
+  height: 6px;
+}
+.rinne-meter-fill {
+  height: 100%;
+  background-color: var(--rinne-ink);
+  transition: width var(--rinne-dur-settle) var(--rinne-ease-settle);
+}
+
+.rinne-components {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-3);
+  padding-top: var(--rinne-space-2);
+  border-top: 1px solid var(--rinne-border);
+}
+
+.rinne-component dt {
+  font-size: var(--rinne-text-body);
+  font-weight: var(--rinne-weight-semibold);
+}
+.rinne-component dd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-1);
+  margin: 0;
+}
+.rinne-component-value {
+  font-size: var(--rinne-text-body);
+  font-weight: var(--rinne-weight-medium);
+}
+
+.rinne-facts {
+  display: grid;
+  gap: var(--rinne-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  padding: var(--rinne-space-4);
+  border-block: 1px solid var(--rinne-border);
+}
+
+.rinne-fact-value {
+  font-size: var(--rinne-text-heading);
+  font-weight: var(--rinne-weight-semibold);
+}
+
+.rinne-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-2);
+}
+
+.rinne-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--rinne-space-3);
+  padding: var(--rinne-space-3);
+  background-color: var(--rinne-panel);
+  border-left: 3px solid var(--rinne-ink);
+  font-weight: var(--rinne-weight-regular);
+}
+.rinne-notice[data-severity="warning"] {
+  border-left-width: 5px;
+  font-weight: var(--rinne-weight-medium);
+}
+
+.rinne-scan-again {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* The element rule above targets `span` directly, so a label inside a button
+   never inherits the button's colour, and Link keeps the anchor underline. */
+.rinne-button,
+.rinne-button:hover,
+.rinne-button:visited {
+  text-decoration: none;
+}
+.rinne-button span,
+.rinne-inline-link span {
+  color: inherit;
+}
+
+/* Preview only. drawImage reads the raw track, so the captured frame - and the
+   image the model sees - is never mirrored. */
+.rinne-capture-video[data-mirrored="true"] {
+  transform: scaleX(-1);
+}

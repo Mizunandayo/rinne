@@ -2,7 +2,18 @@
   {
     "name": "keep-recent-versions",
     "action": { "type": "Keep" },
-    "mostRecentVersions": { "keepCount": 5 }
+    "mostRecentVersions": {
+      "packageNamePrefixes": ["rinne-web", "rinne-physics", "rinne-agent"],
+      "keepCount": 5
+    }
+  },
+  {
+    "name": "keep-recent-gpu-versions",
+    "action": { "type": "Keep" },
+    "mostRecentVersions": {
+      "packageNamePrefixes": ["rinne-reconstruction"],
+      "keepCount": 2
+    }
   },
   {
     "name": "delete-untagged",

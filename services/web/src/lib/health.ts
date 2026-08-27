@@ -12,6 +12,11 @@ export type ServiceName = HealthReport["service"];
 
 export type ProbeOutcome =
   | {
+      readonly kind: "cold";
+      readonly service: ServiceName;
+      readonly latencyMs: 0;
+    }
+  | {
       readonly kind: "reached";
       readonly service: ServiceName;
       readonly report: HealthReport;
@@ -41,7 +46,11 @@ function classify(error: unknown): UnreachableReason {
   return "connection failed";
 }
 
-export async function probeService(service: ServiceName, baseUrl: string): Promise<ProbeOutcome> {
+export async function probeService(
+  service: ServiceName,
+  baseUrl: string,
+  timeoutMs?: number,
+): Promise<ProbeOutcome> {
   const env = getServerEnv();
   const started = performance.now();
   const elapsed = (): number => Math.round(performance.now() - started);
@@ -60,7 +69,7 @@ export async function probeService(service: ServiceName, baseUrl: string): Promi
         accept: "application/json",
         ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
       },
-      signal: AbortSignal.timeout(env.HEALTH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs ?? env.HEALTH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -133,5 +142,10 @@ export async function probeAll(): Promise<ProbeOutcome[]> {
     probeService("agent", env.AGENT_SERVICE_URL),
   ]);
 
-  return [web, physics, agent];
+  // reconstruction is NOT probed. /manifest is force-dynamic, so probing it
+  // would cold-start an L4 on every page load - about 60 seconds and real money
+  // every time anyone refreshes. "Cold" is the honest state.
+  const reconstruction: ProbeOutcome = { kind: "cold", service: "reconstruction", latencyMs: 0 };
+
+  return [web, physics, agent, reconstruction];
 }

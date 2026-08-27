@@ -7,6 +7,8 @@
 # regeneration is a build failure.
 
 from rinne_agent.contracts.health import HealthReport
+from rinne_agent.contracts.reconstruction_request import ReconstructionRequest
+from rinne_agent.contracts.reconstruction_result import ReconstructionResult
 from rinne_agent.contracts.scene_description import SceneDescription
 
-__all__ = ["HealthReport", "SceneDescription"]
+__all__ = ["HealthReport", "ReconstructionRequest", "ReconstructionResult", "SceneDescription"]

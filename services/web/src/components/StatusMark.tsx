@@ -1,7 +1,7 @@
-import { CircleCheck, CircleSlash, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleSlash, PowerOff, TriangleAlert } from "lucide-react";
 import type { HealthReport } from "@rinne/contracts";
 
-type Presentation = "ok" | "degraded" | "down";
+type Presentation = "ok" | "degraded" | "down" | "cold";
 
 interface StatusMarkProps {
   readonly status: Presentation;
@@ -12,6 +12,7 @@ const PRESENTATION = {
   ok: { Icon: CircleCheck, word: "Live", fill: "solid" },
   degraded: { Icon: TriangleAlert, word: "Degraded", fill: "half" },
   down: { Icon: CircleSlash, word: "Unreachable", fill: "hollow" },
+  cold: { Icon: PowerOff, word: "Cold", fill: "dashed" },
 } as const satisfies Record<Presentation, { Icon: typeof CircleCheck; word: string; fill: string }>;
 
 export function StatusMark({ status, label }: StatusMarkProps) {
@@ -27,6 +28,6 @@ export function StatusMark({ status, label }: StatusMarkProps) {
   );
 }
 
-export function toPresentation(status: HealthReport["status"] | "down"): Presentation {
+export function toPresentation(status: HealthReport["status"] | "down" | "cold"): Presentation {
   return status;
 }

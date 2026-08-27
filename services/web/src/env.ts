@@ -35,6 +35,15 @@ const ServerEnvSchema = z.object({
 
   PHYSICS_SERVICE_URL: httpUrl("PHYSICS_SERVICE_URL"),
   AGENT_SERVICE_URL: httpUrl("AGENT_SERVICE_URL"),
+  RECONSTRUCTION_SERVICE_URL: httpUrl("RECONSTRUCTION_SERVICE_URL"),
+
+  // Bucket name only. The web service reads objects through the JSON API with a
+  // read_only token; it never holds a path it did not build itself.
+  GCS_ARTIFACTS_BUCKET: z
+    .string()
+    .min(3)
+    .max(63)
+    .regex(/^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/, "GCS_ARTIFACTS_BUCKET must be a bucket name"),
 
   SERVICE_VERSION: z.string().min(1).max(64).default("0.0.0-dev"),
   GCP_REGION: z.string().min(1).max(32).default("asia-southeast1"),
@@ -43,7 +52,18 @@ const ServerEnvSchema = z.object({
   K_REVISION: z.string().optional(),
 
   RINNE_DEV_ID_TOKEN: z.string().optional(),
+  RINNE_DEV_ACCESS_TOKEN: z.string().optional(),
   HEALTH_TIMEOUT_MS: z.coerce.number().int().min(500).max(30000).default(4000),
+
+  // A cold L4 can take most of the startup-probe budget to answer, so this is
+  // deliberately far longer than HEALTH_TIMEOUT_MS.
+  RECONSTRUCT_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300000).default(240000),
+
+  // Fixed window, in memory, per instance. The GLOBAL cap is the one protecting
+  // the credit balance; a per-IP cap alone is trivially defeated.
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(300000),
+  RATE_LIMIT_PER_IP: z.coerce.number().int().min(1).max(1000).default(6),
+  RATE_LIMIT_GLOBAL: z.coerce.number().int().min(1).max(10000).default(20),
 });
 
 export type ServerEnv = Readonly<z.infer<typeof ServerEnvSchema>>;

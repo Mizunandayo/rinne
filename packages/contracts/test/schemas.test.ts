@@ -5,13 +5,20 @@ import _addFormats from "ajv-formats";
 // Same CommonJS/ESM interop as src/validate.ts - see the note there.
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 const addFormats = _addFormats as unknown as typeof _addFormats.default;
-import { healthSchema, sceneDescriptionSchema } from "../src/generated/schemas.js";
+import {
+  healthSchema,
+  reconstructionRequestSchema,
+  reconstructionResultSchema,
+  sceneDescriptionSchema,
+} from "../src/generated/schemas.js";
 import { compileValidator, ContractViolationError } from "../src/validate.js";
 import type { HealthReport } from "../src/generated/health.js";
 import type { SceneDescription } from "../src/generated/scene-description.js";
 
 const allSchemas = [
   ["health", healthSchema],
+  ["reconstruction-request", reconstructionRequestSchema],
+  ["reconstruction-result", reconstructionResultSchema],
   ["scene-description", sceneDescriptionSchema],
 ] as const;
 
@@ -33,6 +40,51 @@ describe("schema hygiene", () => {
         `${name} allows additional properties`,
       ).toBe(false);
     }
+  });
+
+  it("no two schemas claim the same generated type name", () => {
+    // src/generated/index.ts re-exports every module FLAT, so every definitions
+    // key and every titled oneOf member becomes one global TypeScript
+    // identifier. A collision is a tsc error at build time, not a lint warning,
+    // and it appears in a generated file nobody edits - so it is caught here
+    // instead, where the message says which schema to rename.
+    const seen = new Map<string, string>();
+    const collisions: string[] = [];
+
+    for (const [name, schema] of allSchemas) {
+      const declared: string[] = [schema.title];
+
+      const definitions = (schema as { definitions?: Record<string, unknown> }).definitions ?? {};
+      declared.push(...Object.keys(definitions));
+
+      const visit = (node: unknown): void => {
+        if (typeof node !== "object" || node === null) return;
+        for (const [key, value] of Object.entries(node)) {
+          if (key === "oneOf" || key === "anyOf") {
+            for (const member of value as unknown[]) {
+              const title = (member as { title?: string }).title;
+              if (typeof title === "string") declared.push(title);
+            }
+          }
+          visit(value);
+        }
+      };
+      visit(schema);
+
+      for (const identifier of declared) {
+        // Definition keys are camelCase in the schema and PascalCase in the
+        // generated module, so compare case-insensitively or the check misses
+        // exactly the collisions it exists to find.
+        const key = identifier.toLowerCase();
+        const owner = seen.get(key);
+        if (owner !== undefined && owner !== name) {
+          collisions.push(`${identifier}: ${owner} and ${name}`);
+        }
+        seen.set(key, name);
+      }
+    }
+
+    expect(collisions, "definition names collide in the flat barrel").toEqual([]);
   });
 });
 

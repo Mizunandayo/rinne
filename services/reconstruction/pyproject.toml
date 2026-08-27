@@ -1,0 +1,169 @@
+[project]
+name = "rinne-reconstruction"
+version = "0.1.0"
+description = "Rinne reconstruction service. Photograph in, normalised GLB plus a measured confidence out."
+requires-python = ">=3.12,<3.13"
+
+# Exact pins. A range plus a lockfile is still a range the moment anyone runs
+# `uv lock --upgrade`, and the reproducible-setup criterion is graded.
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.15.0",
+    # Starlette parses multipart only when this is installed. The endpoint is
+    # multipart-only, so it is a hard runtime dependency, not an extra.
+    "python-multipart==0.0.32",
+    # The GCS upload is one raw JSON-API call. httpx2 is the package that
+    # provides the `httpx2` module on this stack - starlette 1.6's TestClient
+    # requires it by name - so the service and its tests share one HTTP client.
+    "httpx2==2.12.0",
+    "pillow==12.3.0",
+    "numpy==2.5.2",
+    "trimesh==5.0.0",
+    "scikit-image==0.26.0",
+    # u2netp is a 4.5MB ONNX graph. This is a DEFAULT dependency, not a gpu one,
+    # so imaging/segmentation.py imports plainly and its maths is tested in CI.
+    "onnxruntime==1.29.0",
+]
+
+[dependency-groups]
+# Same pins as services/agent. Two Python services on two ruff releases means
+# `ruff format --check` can pass locally and fail in the other service's CI job.
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.8.4",
+    "mypy==1.14.1",
+    "pip-audit==2.10.1",
+]
+
+# NOT a default dependency, deliberately. torch plus torchvision is ~2.5GB of
+# wheel and the Day 2 stub pipeline is numpy and scikit-image only, so the
+# default install stays small and the CI job stays fast. Declared now rather
+# than on Day 3 so the versions are pinned and Dependabot is already watching
+# them. `uv export --all-groups` is what pip-audit reads, so these ARE audited.
+gpu = [
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    # What the vendored TripoSR tree imports. transformers is pinned to the last
+    # 4.x: 5.x renamed every ViT parameter, so model.ckpt no longer load_state_dicts.
+    "transformers==4.57.6",
+    "huggingface-hub==0.36.2",
+    "omegaconf==2.3.1",
+    "einops==0.8.2",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rinne_reconstruction"]
+
+# -- ruff: linter and formatter in one tool ----------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+# Generated code is excluded from ruff ENTIRELY, not just from lint.
+# CI runs both `ruff format --check` and the contracts drift check. If ruff is
+# allowed to reformat generated files, those two gates deadlock permanently:
+# format them and the drift check fails against a fresh generation; leave them
+# and the format check fails. The generator's own output is the canonical form.
+extend-exclude = ["src/rinne_reconstruction/contracts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import sorting
+    "N",         # naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # builtin shadowing
+    "C4",        # comprehensions
+    "T20",       # no print() - structured logging only, so Cloud Logging parses it
+    "SIM",       # simplification
+    "RUF",       # ruff-specific
+    "S",         # bandit security rules
+    "ASYNC",     # async correctness
+    "ANN",       # require annotations - the Python half of "no implicit any"
+]
+ignore = [
+    "ANN401",    # Any is occasionally correct at a boundary
+    "S101",      # assert is fine in tests; narrowed below
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**"                                = ["S101", "ANN201", "ANN001"]
+"src/rinne_reconstruction/contracts/**"   = ["ALL"]      # generated
+
+[tool.ruff.lint.isort]
+known-first-party = ["rinne_reconstruction"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+
+# -- mypy --------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_explicit = false
+plugins = ["pydantic.mypy"]
+exclude = ["^src/rinne_reconstruction/contracts/"]
+
+# trimesh and scikit-image both ship py.typed while leaving large parts of their
+# public API unannotated, so strict mode reports every call into them as an
+# untyped call - dozens of errors about somebody else's code. `follow_imports =
+# "skip"` makes both packages Any at the boundary instead. That is not a hole:
+# every value crossing back out of them is explicitly re-typed at the call site
+# (np.asarray with an explicit dtype, float(), int(), bool()), which is exactly
+# what MeshMeasurements exists to enforce.
+[[tool.mypy.overrides]]
+module = ["trimesh.*", "skimage.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+# torch lives in the `gpu` group, which CI and the local dev environment
+# deliberately do NOT install - the stub pipeline is numpy only. The shim
+# imports it lazily inside one function so that stays true, and this is what
+# lets the type check run without a 2.5GB download.
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*"]
+ignore_missing_imports = true
+
+# `tsr` is the vendored TripoSR tree. It is cloned into the image at a pinned
+# commit and exists on no machine that runs mypy, which is why it is Any here.
+[[tool.mypy.overrides]]
+module = ["tsr", "tsr.*"]
+ignore_missing_imports = true
+
+# onnxruntime ships no py.typed. Only three of its symbols are used, and every
+# value crossing back out of the session is re-typed by np.asarray at the call site.
+[[tool.mypy.overrides]]
+module = ["onnxruntime", "onnxruntime.*"]
+ignore_missing_imports = true
+
+# -- pytest ------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+asyncio_mode = "auto"
+# Pin the fixture loop scope explicitly. pytest-asyncio warns that this default
+# is changing in a future release; setting it now means a dependency bump cannot
+# silently change how async fixtures are scoped.
+asyncio_default_fixture_loop_scope = "function"
+# Warnings are errors, with ONE narrowly scoped exception.
+# scikit-image 0.26.0 sets `ar.shape = shape` while building its marching-cubes
+# lookup tables, which numpy 2.5 deprecates. It is third-party code on a path
+# this service cannot avoid, the behaviour is unchanged, and the filter is
+# pinned to that exact message and module so the gate still catches anything
+# else - including the same deprecation appearing in OUR code.
+filterwarnings = [
+    "error",
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:skimage.measure._marching_cubes_lewiner",
+]

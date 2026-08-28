@@ -56,6 +56,12 @@ jobs:
       - name: Build contracts
         run: pnpm contracts:build
 
+      # Then scene, for the same reason: physics and web import @rinne/scene
+      # through dist/, and type-aware lint rules report every call into it as
+      # "an error typed value" when the declarations are not there yet.
+      - name: Build scene
+        run: pnpm run scene:build
+
       - name: Lint
         run: pnpm lint
 

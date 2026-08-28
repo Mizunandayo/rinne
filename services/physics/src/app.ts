@@ -3,11 +3,15 @@ import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { randomUUID } from "node:crypto";
-import { loadEnv, parseOrigins, type Env } from "./config.js";
+import { loadEnv, parseOrigins, isCloudRun, type Env } from "./config.js";
 import { healthRoutes } from "./routes/health.js";
+import { simulateRoutes } from "./routes/simulate.js";
+import { createMeshFetcher, type MeshFetcher } from "./physics/mesh-fetch.js";
 
 export interface BuildAppOptions {
   readonly env?: Env;
+  /** Injected by tests so the route can be exercised without storage. */
+  readonly fetchMesh?: MeshFetcher;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -69,6 +73,19 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   await app.register(healthRoutes(env));
+
+  const fetchMesh =
+    options.fetchMesh ??
+    createMeshFetcher({
+      bucket: env.GCS_ARTIFACTS_BUCKET,
+      maxBytes: env.MAX_MESH_BYTES,
+      timeoutMs: env.MESH_FETCH_TIMEOUT_MS,
+      tokenSource: {
+        onCloudRun: isCloudRun(),
+        developmentToken: env.RINNE_DEV_ACCESS_TOKEN,
+      },
+    });
+  await app.register(simulateRoutes(fetchMesh));
 
   app.setErrorHandler((error: unknown, request, reply) => {
     // Fastify 5.12 types the error handler's first argument as `unknown` rather

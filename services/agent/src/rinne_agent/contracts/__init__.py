@@ -10,5 +10,6 @@ from rinne_agent.contracts.health import HealthReport
 from rinne_agent.contracts.reconstruction_request import ReconstructionRequest
 from rinne_agent.contracts.reconstruction_result import ReconstructionResult
 from rinne_agent.contracts.scene_description import SceneDescription
+from rinne_agent.contracts.simulation_result import SimulationResult
 
-__all__ = ["HealthReport", "ReconstructionRequest", "ReconstructionResult", "SceneDescription"]
+__all__ = ["HealthReport", "ReconstructionRequest", "ReconstructionResult", "SceneDescription", "SimulationResult"]

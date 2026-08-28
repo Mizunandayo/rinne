@@ -10,6 +10,7 @@ import {
   reconstructionRequestSchema,
   reconstructionResultSchema,
   sceneDescriptionSchema,
+  simulationResultSchema,
 } from "../src/generated/schemas.js";
 import { compileValidator, ContractViolationError } from "../src/validate.js";
 import type { HealthReport } from "../src/generated/health.js";
@@ -20,6 +21,7 @@ const allSchemas = [
   ["reconstruction-request", reconstructionRequestSchema],
   ["reconstruction-result", reconstructionResultSchema],
   ["scene-description", sceneDescriptionSchema],
+  ["simulation-result", simulationResultSchema],
 ] as const;
 
 describe("schema hygiene", () => {

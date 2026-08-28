@@ -16,6 +16,7 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/contracts/package.json  packages/contracts/
+COPY packages/scene/package.json      packages/scene/
 COPY services/web/package.json        services/web/
 COPY services/physics/package.json    services/physics/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
@@ -24,19 +25,22 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/contracts packages/contracts
+COPY packages/scene     packages/scene
 COPY services/physics   services/physics
 RUN pnpm --filter @rinne/contracts run build \
- && pnpm --filter @rinne/physics  run build
+ && pnpm --filter @rinne/scene     run build \
+ && pnpm --filter @rinne/physics   run build
 
 # Production dependency tree only, resolved from the same lockfile.
 FROM base AS prod-deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/contracts/package.json  packages/contracts/
+COPY packages/scene/package.json      packages/scene/
 COPY services/web/package.json        services/web/
 COPY services/physics/package.json    services/physics/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --prod \
-      --filter @rinne/physics --filter @rinne/contracts
+      --filter @rinne/physics --filter @rinne/contracts --filter @rinne/scene
 
 FROM node:22.23.2-alpine3.23 AS runtime
 ENV NODE_ENV=production PORT=8080
@@ -49,6 +53,9 @@ COPY --from=prod-deps --chown=10001:10001 /repo/services/physics/node_modules  .
 COPY --from=prod-deps --chown=10001:10001 /repo/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --from=build     --chown=10001:10001 /repo/packages/contracts/dist        ./packages/contracts/dist
 COPY --from=build     --chown=10001:10001 /repo/packages/contracts/package.json ./packages/contracts/package.json
+COPY --from=prod-deps --chown=10001:10001 /repo/packages/scene/node_modules    ./packages/scene/node_modules
+COPY --from=build     --chown=10001:10001 /repo/packages/scene/dist            ./packages/scene/dist
+COPY --from=build     --chown=10001:10001 /repo/packages/scene/package.json    ./packages/scene/package.json
 COPY --from=build     --chown=10001:10001 /repo/services/physics/dist          ./services/physics/dist
 COPY --from=build     --chown=10001:10001 /repo/services/physics/package.json  ./services/physics/package.json
 

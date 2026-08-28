@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rinne.dev/schemas/simulation-result.schema.json",
+  "title": "SimulationResult",
+  "description": "What one SceneDescription produced when it was simulated. The same scene document handed to the browser build and to the headless Node build must produce the same determinism.digest; that equality is the shared-engine claim, and parity.test.ts asserts it. Nothing host-specific belongs in this file except the host block itself, which exists precisely so a reader can tell which side produced the document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sceneId",
+    "completedAt",
+    "host",
+    "outcome",
+    "finalPose",
+    "collider",
+    "determinism",
+    "timings"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "Bumped on any breaking change. A consumer that does not recognise the value must refuse the document rather than guess.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "sceneId": {
+      "description": "Echoed from the SceneDescription that produced this result.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+    },
+    "completedAt": {
+      "description": "RFC 3339 timestamp taken after the last step. Deliberately NOT part of the determinism digest - a wall clock is the one thing two hosts can never agree on.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": { "$ref": "#/definitions/simulationHost" },
+    "outcome": { "$ref": "#/definitions/simulationOutcome" },
+    "finalPose": { "$ref": "#/definitions/bodyPose" },
+    "collider": { "$ref": "#/definitions/colliderSummary" },
+    "determinism": { "$ref": "#/definitions/determinismRecord" },
+    "timings": { "$ref": "#/definitions/simulationTimings" },
+    "notices": {
+      "description": "Bounded list of things the caller should know about this result - an unsettled body, a centre of mass that could not be applied, a decimated collider. Named rules, never library messages.",
+      "type": "array",
+      "maxItems": 8,
+      "items": { "$ref": "#/definitions/simulationNotice" }
+    }
+  },
+  "definitions": {
+    "simulationHost": {
+      "description": "Which side ran it. This is the only field that is allowed to differ between two runs of the same scene, and it exists so that a parity comparison can say which two things it compared.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime", "engine", "engineVersion"],
+      "properties": {
+        "runtime": { "type": "string", "enum": ["node", "browser"] },
+        "engine": { "type": "string", "enum": ["rapier3d-compat"] },
+        "engineVersion": { "type": "string", "minLength": 1, "maxLength": 32 }
+      }
+    },
+    "simulationOutcome": {
+      "description": "The answer, plus the two measurements it was derived from. verdict is a closed enum so the agent can branch on it; tiltDegrees and driftMeters are reported so a human can see why it said that.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "settled", "steps", "simulatedSeconds", "tiltDegrees", "driftMeters"],
+      "properties": {
+        "verdict": {
+          "description": "stable: settled within tolerance of where it started. tipped: settled with its up-axis more than 45 degrees from vertical. slid: settled upright but displaced more than a quarter of its longest edge. inconclusive: never settled inside solver.maxSteps, which is a real answer about the scene and not an error.",
+          "type": "string",
+          "enum": ["stable", "tipped", "slid", "inconclusive"]
+        },
+        "settled": {
+          "description": "True when the pose stopped changing for a full settle window. Deliberately not a velocity test: a convex hull resting on a plane keeps a small non-zero angular velocity indefinitely without moving.",
+          "type": "boolean"
+        },
+        "steps": { "type": "integer", "minimum": 0, "maximum": 20000 },
+        "simulatedSeconds": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "tiltDegrees": {
+          "description": "Angle between the body's local +Y after simulation and world +Y. Yaw does not count as tilt, which is why this is measured from the up-axis rather than from the quaternion's angle.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180
+        },
+        "driftMeters": {
+          "description": "Horizontal distance from the initial translation. Vertical motion is excluded: a body settling onto the ground moves down, and that is not drift.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      }
+    },
+    "bodyPose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["translation", "rotation"],
+      "properties": {
+        "translation": { "$ref": "#/definitions/poseVector" },
+        "rotation": { "$ref": "#/definitions/poseRotation" }
+      }
+    },
+    "poseVector": {
+      "description": "Metres. Not named vec3: every definitions key becomes a flat top-level TypeScript identifier and scene-description.schema.json already owns that name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number", "minimum": -100000, "maximum": 100000 },
+        "y": { "type": "number", "minimum": -100000, "maximum": 100000 },
+        "z": { "type": "number", "minimum": -100000, "maximum": 100000 }
+      }
+    },
+    "poseRotation": {
+      "description": "Unit quaternion, Rapier's own component order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z", "w"],
+      "properties": {
+        "x": { "type": "number", "minimum": -1, "maximum": 1 },
+        "y": { "type": "number", "minimum": -1, "maximum": 1 },
+        "z": { "type": "number", "minimum": -1, "maximum": 1 },
+        "w": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "colliderSummary": {
+      "description": "What the mesh actually became. A reconstruction is not convex and this says so in the payload rather than in a comment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sourceVertices", "hullVertices", "massKilograms"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["convex-hull"] },
+        "sourceVertices": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "hullVertices": {
+          "description": "After voxel decimation. A hull built from every reconstruction vertex has hundreds of near-coplanar faces, its contact manifold flickers every step, and the body then never comes to rest - so decimation is a correctness requirement, not an optimisation.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "massKilograms": { "type": "number", "exclusiveMinimum": 0, "maximum": 5000 }
+      }
+    },
+    "determinismRecord": {
+      "description": "Everything needed to reproduce this run, plus the digest that makes two runs comparable in one string. The digest covers the scene id, the solver settings, the verdict, the step count and the final pose at 6dp. It excludes completedAt and the host block by design.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "timestepSeconds", "substeps", "digest"],
+      "properties": {
+        "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "timestepSeconds": { "type": "number", "minimum": 0.0005, "maximum": 0.05 },
+        "substeps": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "digest": {
+          "description": "FNV-1a 64 over the canonical form, as 16 lowercase hex characters. Not a cryptographic hash and not a security control: it is a comparison key that has to compute identically and synchronously in Node and in a browser, which rules out both node:crypto and the async crypto.subtle.",
+          "type": "string",
+          "pattern": "^[a-f0-9]{16}$"
+        }
+      }
+    },
+    "simulationTimings": {
+      "description": "Wall-clock milliseconds. Not named stageTimings: reconstruction-result.schema.json already owns that name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setupMs", "stepMs", "totalMs"],
+      "properties": {
+        "setupMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
+        "stepMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
+        "totalMs": { "type": "integer", "minimum": 0, "maximum": 600000 }
+      }
+    },
+    "simulationNotice": {
+      "description": "One caveat about this result. The code is a closed enum so a consumer can branch on it; the message is a fixed sentence for a human.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "collider-is-convex-hull",
+            "collider-decimated",
+            "center-of-mass-not-applied",
+            "did-not-settle",
+            "left-the-ground-plane",
+            "load-test-not-implemented"
+          ]
+        },
+        "severity": { "type": "string", "enum": ["info", "warning"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    }
+  }
+}

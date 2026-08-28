@@ -76,7 +76,7 @@ $config = @{
         TimeoutSec  = 60
         Memory      = '1Gi'
         Cpu         = '1'
-        Env         = @{ NODE_ENV = 'production'; LOG_LEVEL = 'info' }
+        Env         = @{ NODE_ENV = 'production'; LOG_LEVEL = 'info'; GCS_ARTIFACTS_BUCKET = "rinne-artifacts-$ProjectId" }
     }
     reconstruction = @{
         Name        = 'rinne-reconstruction'

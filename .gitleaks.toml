@@ -35,8 +35,11 @@ regex       = '''\b1//[0-9A-Za-z_\-]{30,}\b'''
 tags        = ["gcp", "token"]
 
 [allowlist]
-description = "Lockfiles only. Integrity hashes are high-entropy and are not secrets."
+description = "Lockfiles and generated contract code. Integrity hashes and generated enum members are high-entropy and are not secrets. The SCHEMAS these are generated from are NOT allowlisted, so a secret committed at the source is still caught."
 paths = [
   '''(^|/)pnpm-lock\.yaml$''',
   '''(^|/)uv\.lock$''',
+  '''^packages/contracts/src/generated/''',
+  '''^services/agent/src/rinne_agent/contracts/''',
+  '''^services/reconstruction/src/rinne_reconstruction/contracts/''',
 ]

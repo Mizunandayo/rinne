@@ -21,6 +21,7 @@
     "@fastify/helmet": "13.1.1",
     "@fastify/rate-limit": "11.2.0",
     "@rinne/contracts": "workspace:*",
+    "@rinne/scene": "workspace:*",
     "fastify": "5.12.1",
     "zod": "3.25.76"
   },

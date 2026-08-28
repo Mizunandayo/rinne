@@ -102,6 +102,9 @@ importers:
       '@rinne/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@rinne/scene':
+        specifier: workspace:*
+        version: link:../../packages/scene
       fastify:
         specifier: 5.12.1
         version: 5.12.1
@@ -139,6 +142,9 @@ importers:
       '@rinne/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@rinne/scene':
+        specifier: workspace:*
+        version: link:../../packages/scene
       lucide-react:
         specifier: 0.469.0
         version: 0.469.0(react@19.2.8)

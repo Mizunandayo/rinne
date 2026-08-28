@@ -18,6 +18,7 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/contracts/package.json  packages/contracts/
+COPY packages/scene/package.json      packages/scene/
 COPY services/web/package.json        services/web/
 COPY services/physics/package.json    services/physics/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
@@ -27,9 +28,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/contracts packages/contracts
+COPY packages/scene     packages/scene
 COPY services/web       services/web
 RUN pnpm --filter @rinne/contracts run build \
- && pnpm --filter @rinne/web run build
+ && pnpm --filter @rinne/scene     run build \
+ && pnpm --filter @rinne/web       run build
 
 # ── Runtime ──────────────────────────────────────────────────────────
 FROM node:22.23.2-alpine3.23 AS runtime

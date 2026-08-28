@@ -233,6 +233,63 @@ Test-Assert -Name "rinne-reconstruction-sa has objectCreator, not objectAdmin" `
     -Detail "bucket IAM does not match the documented asymmetry"
 Test-Assert -Name "rinne-web-sa has objectViewer" `
     -Condition ($iam -match 'objectViewer') -Detail "bucket IAM is missing the read binding"
+Test-Assert -Name "rinne-physics-sa can read the bucket, and only read" `
+    -Condition ($iam -match 'rinne-physics-sa' -and $iam -notmatch 'objectAdmin') `
+    -Detail "physics needs objectViewer to fetch a mesh for POST /v1/simulate"
+
+# -- 8. The physics simulate route ------------------------------------
+# CPU only. Waking physics costs nothing measurable, unlike the L4.
+Write-Step "8. POST /v1/simulate is live and the contract is enforced"
+
+$physicsUrl = $urls['rinne-physics']
+$sa = "rinne-web-sa@$ProjectId.iam.gserviceaccount.com"
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $raw = & gcloud auth print-identity-token `
+        --impersonate-service-account=$sa --audiences=$physicsUrl 2>$null
+} finally {
+    $ErrorActionPreference = $previous
+}
+$global:LASTEXITCODE = 0
+$token = ((@($raw) | Where-Object { $_ -is [string] }) -join '').Trim()
+
+if (-not $token) {
+    Test-Assert -Name "minted an ID token for rinne-physics" -Condition $false `
+        -Detail "impersonation failed. Grant it once: gcloud iam service-accounts add-iam-policy-binding $sa --member=user:YOUR_EMAIL --role=roles/iam.serviceAccountTokenCreator --project=$ProjectId"
+} else {
+    # A scene whose mesh uri points at the metadata server. The contract must
+    # refuse it BEFORE the handler runs, so this asserts the SSRF control in
+    # production rather than only in a unit test.
+    $hostile = @{
+        schemaVersion = 1
+        sceneId       = "smoke-000001"
+        units         = @{ length = "m"; mass = "kg" }
+        gravity       = @{ x = 0; y = -9.81; z = 0 }
+        ground        = @{ friction = 0.6; restitution = 0.1 }
+        body          = @{
+            mesh               = @{ uri = "http://metadata.google.internal/computeMetadata/v1/"; format = "glb" }
+            massKilograms      = 2.4
+            friction           = 0.55
+            restitution        = 0.05
+            initialTranslation = @{ x = 0; y = 0.02; z = 0 }
+        }
+        test          = @{ kind = "tip"; pushHeightRatio = 0.9; forceNewtons = 18; directionDegrees = 0 }
+        solver        = @{ timestepSeconds = 0.0166667; maxSteps = 900; seed = 42 }
+    } | ConvertTo-Json -Depth 6 -Compress
+
+    $status = 0
+    try {
+        $r = Invoke-WebRequest -Uri "$physicsUrl/v1/simulate" -Method POST -TimeoutSec 60 `
+            -UseBasicParsing -ContentType "application/json" -Body $hostile `
+            -Headers @{ Authorization = "Bearer $token" }
+        $status = $r.StatusCode
+    } catch {
+        $status = Get-HttpStatus $_
+    }
+    Test-Assert -Name "/v1/simulate REFUSES a non-gs:// mesh uri" `
+        -Condition ($status -eq 400) -Detail "expected 400, got $status"
+}
 
 if ($IncludeGpu) {
     Write-Step "7b. Waking the L4 (this costs about `$0.18)"

@@ -181,11 +181,12 @@ Write-Ok "Lifecycle applied: objects deleted after 14 days"
 # ---------------------------------------------------------------------
 Write-Step "Bucket IAM - deliberately asymmetric"
 
-# reconstruction WRITES and never reads; web READS and never writes. Neither
-# holds objectAdmin, and both bindings are on the bucket, never the project.
+# reconstruction WRITES and never reads; web and physics READ and never write.
+# Nobody holds objectAdmin, and every binding is on the bucket, never the project.
 $bucketBindings = @(
     @{ Sa = "rinne-reconstruction-sa"; Role = "roles/storage.objectCreator" },
-    @{ Sa = "rinne-web-sa";            Role = "roles/storage.objectViewer" }
+    @{ Sa = "rinne-web-sa";            Role = "roles/storage.objectViewer" },
+    @{ Sa = "rinne-physics-sa";        Role = "roles/storage.objectViewer" }
 )
 foreach ($binding in $bucketBindings) {
     $member = "serviceAccount:$($binding.Sa)@$ProjectId.iam.gserviceaccount.com"

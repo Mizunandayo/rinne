@@ -18,6 +18,20 @@ const EnvSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
 
   PHYSICS_ALLOWED_ORIGINS: z.string().default(""),
+
+  GCS_ARTIFACTS_BUCKET: z
+    .string()
+    .min(3)
+    .max(63)
+    .regex(/^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/, "GCS_ARTIFACTS_BUCKET must be a bucket name")
+    .default("rinne-artifacts-rinnehackathon"),
+
+  // A stub GLB is ~350KB and a TripoSR one a few MB. Well under the ceiling.
+  MAX_MESH_BYTES: z.coerce.number().int().min(1024).max(33_554_432).default(33_554_432),
+  MESH_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+
+  // Local development only. On Cloud Run the token comes from the metadata server.
+  RINNE_DEV_ACCESS_TOKEN: z.string().optional(),
 });
 
 export type Env = Readonly<z.infer<typeof EnvSchema>>;
@@ -40,4 +54,9 @@ export function parseOrigins(raw: string): string[] {
     .split(",")
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
+}
+
+/** K_SERVICE is set by Cloud Run and by nothing else. */
+export function isCloudRun(source: NodeJS.ProcessEnv = process.env): boolean {
+  return typeof source["K_SERVICE"] === "string" && source["K_SERVICE"].length > 0;
 }

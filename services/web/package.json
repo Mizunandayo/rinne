@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@rinne/contracts": "workspace:*",
+    "@rinne/scene": "workspace:*",
     "lucide-react": "0.469.0",
     "next": "15.5.23",
     "react": "19.2.8",

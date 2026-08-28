@@ -64,9 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Everything expensive happens HERE, before the port is answered, so
-        # the startup probe on /readyz is what gates traffic. Day 3's TripoSR
-        # loads ~1.7GB of weights in this block against a hard 240-second
-        # probe ceiling, which is why the weights are baked into the image.
+        # the startup probe on /readyz is what gates traffic.
         app.state.pipeline = build_pipeline(resolved)
         app.state.store = build_store(
             mode=resolved.storage_mode,
@@ -95,24 +93,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
         # No default_response_class. FastAPI 0.141 deprecated ORJSONResponse:
         # it now serialises straight to JSON bytes via Pydantic whenever a
-        # return type or response_model is set. Every route here declares
-        # response_model, so this is strictly better.
-        # Docs off in production. This service is IAM-private, but a published
-        # schema is a free gift to anyone who ever finds an IAM gap.
+        # return type or response_model is set.
         docs_url="/docs" if resolved.docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if resolved.docs_enabled else None,
     )
 
     # Publish the resolved settings on the app instance so routes can depend on
-    # THESE settings rather than the lru_cache'd global. Without this line the
-    # `settings` parameter of create_app() is decorative.
+    # THESE settings rather than the lru_cache'd global.
     app.state.settings = resolved
 
     # ONE reconstruction at a time, per instance. --concurrency=1 is the
-    # deploy-time control; this is the invariant that survives someone raising
-    # the flag. Created here rather than at module scope so two apps in one
-    # test process do not share a lock.
+    # deploy-time control; this is the invariant that survives someone raising the flag
     app.state.pipeline_lock = asyncio.Lock()
 
     # Owned here and passed in, so the gauge belongs to this app and not to

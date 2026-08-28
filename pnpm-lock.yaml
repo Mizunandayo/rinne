@@ -54,6 +54,37 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/node@22.19.0)(tsx@4.19.2)
 
+  packages/scene:
+    dependencies:
+      '@dimforge/rapier3d-compat':
+        specifier: 0.14.0
+        version: 0.14.0
+      '@rinne/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.17.0
+        version: 9.17.0
+      '@types/node':
+        specifier: 22.19.0
+        version: 22.19.0
+      eslint:
+        specifier: 9.39.5
+        version: 9.39.5
+      globals:
+        specifier: 15.14.0
+        version: 15.14.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: 8.67.0
+        version: 8.67.0(eslint@9.39.5)(typescript@5.9.3)
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/node@22.19.0)(tsx@4.19.2)
+
   services/physics:
     dependencies:
       '@dimforge/rapier3d-compat':

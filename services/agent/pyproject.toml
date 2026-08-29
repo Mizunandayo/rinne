@@ -27,14 +27,14 @@ dependencies = [
 dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
-    "ruff==0.8.4",
-    "mypy==1.14.1",
+    "ruff==0.16.4",
+    "mypy==1.20.2",
     "pip-audit==2.10.1",
-    "datamodel-code-generator==0.74.0",
+    "datamodel-code-generator==0.75.1",
 ]
 
 [build-system]
-requires = ["hatchling==1.27.0"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

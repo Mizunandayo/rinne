@@ -1,20 +1,24 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Builds, pushes, and deploys all three Rinne services to Cloud Run.
+  Builds, pushes, and deploys all four Rinne services to Cloud Run, then wires
+  the scan-queue bucket to the agent through Eventarc.
 
 .DESCRIPTION
-  DEPLOY ORDER IS NOT ARBITRARY: physics -> agent -> web.
-  Web's PHYSICS_SERVICE_URL and AGENT_SERVICE_URL are outputs of the first two
-  deploys, so it must go last.
+  DEPLOY ORDER IS NOT ARBITRARY: physics -> reconstruction -> agent -> web.
+  Web's PHYSICS_SERVICE_URL, AGENT_SERVICE_URL and RECONSTRUCTION_SERVICE_URL
+  are outputs of the first three deploys, so it must go last.
 
   NETWORK MODEL, stated because it is the single most common way this goes
-  wrong: physics and agent deploy --no-allow-unauthenticated with
-  --ingress=all. Ingress stays "all" ON PURPOSE. Without a VPC connector a
+  wrong: physics, reconstruction and agent deploy --no-allow-unauthenticated
+  with --ingress=all. Ingress stays "all" ON PURPOSE. Without a VPC connector a
   Cloud Run -> Cloud Run call egresses over the public path, so --ingress=internal
   BLOCKS it and produces a 403 indistinguishable from an IAM failure. IAM is
-  the real control: rinne-web-sa gets roles/run.invoker on those two specific
-  services and nothing else on the planet can call them.
+  the real control: rinne-web-sa gets roles/run.invoker on those services and
+  rinne-eventarc-sa gets it on the agent alone.
+
+  THE EVENTARC TRIGGER IS CREATED HERE, NOT IN BOOTSTRAP. It names a Cloud Run
+  service and a request path, so it cannot exist before the service does.
 
 .PARAMETER Tag
   Image tag. Defaults to the short git SHA, or a UTC timestamp outside a repo.
@@ -34,7 +38,8 @@ param(
     [ValidateSet('physics','reconstruction','agent','web')]
     [string[]]$Services    = @('physics','reconstruction','agent','web'),
     [switch]$UseCloudBuild,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipTrigger
 )
 
 . "$PSScriptRoot\lib\Rinne.Common.ps1"
@@ -53,7 +58,11 @@ if (-not $Tag) {
     $global:LASTEXITCODE = 0
 }
 
-$registry = "$Region-docker.pkg.dev/$ProjectId/$RepoName"
+$registry     = "$Region-docker.pkg.dev/$ProjectId/$RepoName"
+$scansBucket  = "rinne-scans-$ProjectId"
+$scanPrefix   = "scan-queue/"
+$triggerName  = "rinne-scan-queue"
+$eventarcSa   = "rinne-eventarc-sa@$ProjectId.iam.gserviceaccount.com"
 
 Write-Step "Deploy plan"
 Write-Host "  project  : $ProjectId"
@@ -103,7 +112,20 @@ $config = @{
         TimeoutSec  = 300
         Memory      = '1Gi'
         Cpu         = '1'
-        Env         = @{ APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false' }
+        Env         = @{
+            APP_ENV             = 'production'
+            LOG_LEVEL           = 'INFO'
+            ENABLE_DOCS         = 'false'
+            STORE_MODE          = 'firestore'
+            OBJECT_MODE         = 'gcs'
+            TRIAGE_MODE         = 'flash'
+            TRIAGE_MODEL        = 'gemini-3.5-flash'
+            VERTEX_LOCATION     = $Region
+            FIRESTORE_COLLECTION= 'agent-jobs'
+            SCAN_BUCKET         = "rinne-scans-$ProjectId"
+            SCAN_PREFIX         = 'scan-queue/'
+            MAX_ATTEMPTS        = '3'
+        }
     }
     web = @{
         Name        = 'rinne-web'
@@ -135,22 +157,12 @@ foreach ($key in @('physics','reconstruction','agent','web')) {
     $image = "$registry/$($svc.Name):$Tag"
     $email = "$($svc.ServiceAcct)@$ProjectId.iam.gserviceaccount.com"
 
-    # -- Build and push ------------------------------------------------
+    # Build and push
     if (-not $SkipBuild) {
         Write-Step "Building $($svc.Name)"
         Push-Location $repoRoot
         try {
             if ($UseCloudBuild) {
-                # `gcloud builds submit --tag` requires a Dockerfile at the ROOT
-                # of the uploaded context. Rinne's Dockerfiles live at
-                # services/<svc>/Dockerfile and deliberately build FROM the repo
-                # root (they need pnpm-lock.yaml, pnpm-workspace.yaml and
-                # packages/contracts), so --tag cannot express this build and
-                # fails with "Dockerfile required when specifying --tag".
-                #
-                # A generated build config can express it, and it runs the exact
-                # same `docker build -f ... .` command as the local path below,
-                # so the two build paths cannot drift apart.
                 $cfgPath = Join-Path ([System.IO.Path]::GetTempPath()) "rinne-cloudbuild-$($svc.Name).yaml"
                 $cfg = @"
 steps:
@@ -199,7 +211,7 @@ options:
         Write-Ok "Pushed $image"
     }
 
-    # -- Environment ---------------------------------------------------
+    # Environment
     $envMap = @{} + $svc.Env
     $envMap['SERVICE_VERSION'] = $Tag
     $envMap['GCP_REGION']      = $Region
@@ -229,7 +241,7 @@ options:
     $envArg = "^@^" + (($envMap.GetEnumerator() | Sort-Object Name |
         ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "@")
 
-    # -- Deploy --------------------------------------------------------
+    # Deploy
     Write-Step "Deploying $($svc.Name)"
 
     $deployArgs = @(
@@ -248,13 +260,6 @@ options:
         "--max-instances=$($svc.MaxInstances)",
         "--ingress=all",
         "--execution-environment=gen2",
-        # STARTUP PROBE, not the default TCP check.
-        # Cloud Run's default startup check only opens a TCP connection to the
-        # port. A revision that is listening but broken therefore passes, gets
-        # promoted, and fails every request. physics and agent probe /readyz,
-        # which for physics returns 503 until Rapier has actually initialised
-        # and passed its self-test - so a revision whose WASM failed to load
-        # never receives traffic. web probes /api/health.
         "--startup-probe=httpGet.path=$($svc.ProbePath),httpGet.port=8080,initialDelaySeconds=5,periodSeconds=5,timeoutSeconds=3,failureThreshold=6",
         "--set-env-vars=$envArg",
         '--quiet'
@@ -284,12 +289,11 @@ options:
     $deployed[$key] = $url
     Write-Ok "$($svc.Name) -> $url"
 
-    # -- Per-service invoker binding -----------------------------------
+    # Per-service invoker binding
     if (-not $svc.Public) {
         $invokers = @('rinne-web-sa')
-        # The agent calls reconstruction on Day 4. Granting it now costs one line
-        # and saves debugging a 403 on a ring-fenced day.
         if ($key -eq 'reconstruction') { $invokers += 'rinne-agent-sa' }
+        if ($key -eq 'agent') { $invokers += 'rinne-eventarc-sa' }
         foreach ($invoker in $invokers) {
             Invoke-Gcloud run services add-iam-policy-binding $svc.Name `
                 --region=$Region --project=$ProjectId `
@@ -301,6 +305,83 @@ options:
     }
 }
 
+# Eventarc: gs://rinne-scans-* object finalize -> POST /v1/events/scan
+if (-not $SkipTrigger -and $Services -contains 'agent') {
+    Write-Step "Eventarc trigger for the scan queue"
+
+
+    $triggerArgs = @(
+        "--location=$Region",
+        "--project=$ProjectId",
+        "--destination-run-service=rinne-agent",
+        "--destination-run-region=$Region",
+        "--destination-run-path=/v1/events/scan",
+        "--event-filters=type=google.cloud.storage.object.v1.finalized",
+        "--event-filters=bucket=$scansBucket",
+        "--service-account=$eventarcSa",
+        '--quiet'
+    )
+
+    if (Test-GcloudResource eventarc triggers describe $triggerName --location=$Region --project=$ProjectId --format="value(name)") {
+
+        Invoke-Gcloud eventarc triggers update $triggerName `
+            --location=$Region --project=$ProjectId `
+            --destination-run-service=rinne-agent `
+            --destination-run-region=$Region `
+            --destination-run-path=/v1/events/scan `
+            --service-account=$eventarcSa `
+            --quiet -Quiet | Out-Null
+        Write-Ok "Updated trigger $triggerName"
+    } else {
+        # THE FIRST TRIGGER IN A PROJECT LAZILY PROVISIONS THE EVENTARC SERVICE
+        # AGENT, and the create that provisions it usually fails: the agent is
+        # granted roles/eventarc.serviceAgent, but Eventarc's control plane has
+        # not seen the grant yet. Hit for real on Aug 30, 2026. The role really
+        # is present at that moment - checked - so the only fix is to wait and
+        # ask again, which is what Google's own error message says to do.
+        $created = $false
+        for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+                Invoke-Gcloud eventarc triggers create $triggerName @triggerArgs | Out-Null
+                $created = $true
+                break
+            } catch {
+                $message = $_.Exception.Message
+                $propagating = ($message -match 'FAILED_PRECONDITION') `
+                    -or ($message -match 'Service Agent') -or ($message -match 'propagated')
+                if (-not $propagating -or $attempt -ge 12) { throw }
+                Write-Host "    Eventarc service agent not ready yet; retrying in 15s ($attempt/12)" `
+                    -ForegroundColor DarkCyan
+                Start-Sleep -Seconds 15
+            }
+        }
+        if ($created) {
+            Write-Ok "Created trigger $triggerName on gs://$scansBucket"
+            Write-Host "    First-time triggers can take a couple of minutes to start delivering." -ForegroundColor DarkCyan
+        }
+    }
+
+    $transport = ((Invoke-Gcloud eventarc triggers describe $triggerName `
+        --location=$Region --project=$ProjectId `
+        --format="value(transport.pubsub.subscription)" -Quiet) -join '').Trim()
+
+    if ($transport) {
+        $subId = $transport.Split('/')[-1]
+        try {
+            Invoke-Gcloud pubsub subscriptions update $subId `
+                --project=$ProjectId `
+                --ack-deadline=120 `
+                --quiet -Quiet | Out-Null
+            Write-Ok "  transport subscription $subId ack-deadline=120s"
+        } catch {
+            Write-Warning "Could not set the ack deadline on $subId. Eventarc may have reclaimed it."
+            Write-Warning $_.Exception.Message
+        }
+    } else {
+        Write-Warning "Trigger has no transport subscription yet. Re-run after it finishes provisioning."
+    }
+}
+
 Write-Step "Deployed"
 $deployed.GetEnumerator() | Sort-Object Name | ForEach-Object {
     $public = if ($config[$_.Key].Public) { 'public' } else { 'IAM-private' }
@@ -308,5 +389,6 @@ $deployed.GetEnumerator() | Sort-Object Name | ForEach-Object {
 } | Format-Table -AutoSize
 
 Write-Host ""
-Write-Host "  Verify:  pwsh .\infra\scripts\smoke-test.ps1" -ForegroundColor White
+Write-Host "  Scan queue:  gs://$scansBucket/$scanPrefix" -ForegroundColor White
+Write-Host "  Verify:      pwsh .\infra\scripts\smoke-test.ps1" -ForegroundColor White
 Write-Host ""

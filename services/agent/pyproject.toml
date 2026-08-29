@@ -11,13 +11,22 @@ dependencies = [
     "uvicorn[standard]==0.52.4",
     "pydantic==2.13.4",
     "pydantic-settings==2.15.0",
+    # The Agent Development Kit. Measured against the gates before it was
+    # adopted: +38 transitive packages, +50MB in the runtime image, and
+    # `pip-audit --strict` reports no known vulnerabilities. It brings
+    # google-genai and google-auth, NOT google-cloud-aiplatform.
+    "google-adk==2.8.0",
+    # Promoted out of the dev group: Firestore and GCS are now called at
+    # runtime. httpx2 is the package that provides the `httpx2` module on this
+    # stack - starlette 1.6's TestClient requires it by name - so the service
+    # and its tests share one HTTP client, exactly as in services/reconstruction.
+    "httpx2==2.12.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
-    "httpx2==2.12.0",
     "ruff==0.8.4",
     "mypy==1.14.1",
     "pip-audit==2.10.1",
@@ -95,4 +104,14 @@ asyncio_mode = "auto"
 # is changing in a future release; setting it now means a dependency bump cannot
 # silently change how async fixtures are scoped.
 asyncio_default_fixture_loop_scope = "function"
-filterwarnings = ["error"]
+# Warnings are errors, with ONE narrowly scoped exception.
+# Importing google.adk.agents constructs LlmAgentConfig, whose base class ADK
+# itself has deprecated, so the DeprecationWarning fires at COLLECTION time and
+# takes the whole suite down before a single test runs. Pinned to that exact
+# message: if ADK removes it the filter goes inert, and every other deprecation
+# still fails the build. Same treatment as the skimage filter in
+# services/reconstruction, and for the same reason.
+filterwarnings = [
+    "error",
+    "ignore:BaseAgentConfig is deprecated and will be removed in future versions:DeprecationWarning",
+]

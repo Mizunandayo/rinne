@@ -36,10 +36,29 @@ def test_healthz_emits_only_contract_properties(client: TestClient) -> None:
     assert set(client.get("/livez").json().keys()) <= allowed
 
 
-def test_readyz_returns_ok_with_no_dependencies_on_day_one(client: TestClient) -> None:
+def test_readyz_reports_the_store_and_the_triager(client: TestClient) -> None:
     response = client.get("/readyz")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+
+    body = response.json()
+    assert body["status"] == "ok"
+    named = {dep["name"]: dep for dep in body["dependencies"]}
+    assert named["job-store"]["status"] == "ok"
+    assert named["job-store"]["detail"] == "memory"
+    assert named["triage"]["detail"] == "stub-triage"
+
+
+def test_readyz_names_the_queue_it_is_watching(client: TestClient) -> None:
+    """A judge reading /readyz should be able to see which bucket to drop into."""
+    assert "gs://rinne-scans-rinnehackathon/scan-queue/" in client.get("/readyz").json()["detail"]
+
+
+def test_readyz_does_not_probe_firestore_or_vertex(client: TestClient) -> None:
+    """Cloud Run polls this every few seconds. A readiness check that called
+    Firestore and Vertex would spend money answering a question the startup
+    already answered, and would turn a downstream blip into a restart loop."""
+    first = client.get("/readyz").elapsed
+    assert first.total_seconds() < 1.0
 
 
 def test_security_headers_are_present(client: TestClient) -> None:

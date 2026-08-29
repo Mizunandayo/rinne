@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rinne.dev/schemas/agent-job.schema.json",
+  "title": "AgentJob",
+  "description": "One scan, one Firestore document, one exhaustive state machine. This is the decision log section 7 promises, and the only place a job's state lives - there is no in-process table it could disagree with. It is a shared contract rather than a private shape because the cockpit reads it from TypeScript, and because generating the ten states into both languages is what turns \"no implicit states\" into a build gate instead of a discipline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "state",
+    "attempts",
+    "createdAt",
+    "updatedAt",
+    "source",
+    "decisions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "Bumped on any breaking change. A consumer that does not recognise the value must refuse the document rather than guess.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "jobId": {
+      "description": "Firestore document key, and later the reconstruction requestId and the sceneId. Derived deterministically from bucket, object and generation so a redelivered event maps to the same document instead of a second job. Same pattern as requestId and sceneId, for the same reason: no slash, no dot, no traversal.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+    },
+    "state": { "$ref": "#/definitions/jobState" },
+    "lastGoodState": { "$ref": "#/definitions/jobState" },
+    "attempts": {
+      "description": "How many times the agent has begun work on this job. Section 12 forbids unbounded loops; this is where that rule is enforced for the agent path, and the ceiling of 6 matches the tool-loop cap and SceneDescription.provenance.refitIteration.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+    },
+    "createdAt": {
+      "description": "RFC 3339 timestamp of the delivery that created this document.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "description": "RFC 3339 timestamp of the last accepted transition.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": { "$ref": "#/definitions/scanSource" },
+    "triage": { "$ref": "#/definitions/triageRecord" },
+    "error": { "$ref": "#/definitions/jobError" },
+    "decisions": {
+      "description": "Append-only audit trail. Bounded so a redelivery storm or a buggy loop cannot inflate a document, and because Firestore charges by document size.",
+      "type": "array",
+      "maxItems": 24,
+      "items": { "$ref": "#/definitions/decisionEntry" }
+    }
+  },
+  "definitions": {
+    "jobState": {
+      "description": "The exhaustive state set from section 7. skipped_low_risk is a LEGITIMATE terminal outcome and the most common one - triage deciding no review is needed is the product working, not failing. gated is designed and NOT shipped: the Gemma tier-0 gate was cut on Aug 28, so nothing in this build emits it; it stays in the enum so the three-tier cascade remains describable and the cut remains visible. failed is reachable from every non-terminal state and carries error and lastGoodState.",
+      "type": "string",
+      "enum": [
+        "queued",
+        "gated",
+        "skipped_low_risk",
+        "triaged",
+        "simulating",
+        "awaiting_verification",
+        "refitting",
+        "reporting",
+        "done",
+        "failed"
+      ]
+    },
+    "scanSource": {
+      "description": "The object that triggered this job, as reported by the storage event. Recorded in full so the decision log is reproducible from the document alone - a judge can re-run the exact object the agent saw.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bucket", "object", "generation", "contentType", "sizeBytes", "receivedAt"],
+      "properties": {
+        "bucket": {
+          "description": "Checked against one configured bucket before any work happens. The delivery is authenticated by IAM, but the bucket name inside it is still payload.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$"
+        },
+        "object": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "generation": {
+          "description": "GCS reports generation as a decimal string, and it stays a string here for the same reason: it is an int64 identifier, not a number anything does arithmetic on. It is part of the jobId derivation, so overwriting an object produces a new job rather than silently reusing the old one.",
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$"
+        },
+        "contentType": {
+          "description": "Allowlisted before the object is read. The same three types the reconstruction service accepts, so a scan that triages cannot then be refused downstream.",
+          "type": "string",
+          "enum": ["image/jpeg", "image/png", "image/webp"]
+        },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 26214400 },
+        "receivedAt": { "type": "string", "format": "date-time" },
+        "eventId": {
+          "description": "CloudEvent id of the delivery that created the job. Two deliveries of one object carry the same id; a genuine re-upload does not. Evidence, not a control - the control is the create-only write.",
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "triageRecord": {
+      "description": "Section 7 step 1. The judgment a script cannot make: is this object worth a physics review at all. shape is the classification the decision rested on, and it is the input Day 5's test selection reads - recording it here means selection does not have to look at the image a second time.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review", "shape", "confidence", "rationale", "model", "basis", "latencyMs"],
+      "properties": {
+        "review": {
+          "description": "true: this warrants a physics review, and the job moves to triaged. false: it does not, and the job terminates in skipped_low_risk.",
+          "type": "boolean"
+        },
+        "shape": {
+          "description": "What the model saw. no-object is the case the cut Gemma tier-0 gate would have caught more cheaply; Flash catches it now, which is the cost argument for that gate written down as a value rather than as prose.",
+          "type": "string",
+          "enum": ["tall-narrow", "flat-wide", "stack", "irregular", "no-object"]
+        },
+        "confidence": {
+          "description": "The model's own stated confidence in this triage call. NOT the reconstruction confidence and NOT the gate input - it is here so a wrong triage can be told apart from an unsure one.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "model": {
+          "description": "Exact model id that produced this, so the log says which tier answered.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "basis": { "type": "string", "enum": ["flash-triage-v1"] },
+        "latencyMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
+        "promptTokens": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "responseTokens": { "type": "integer", "minimum": 0, "maximum": 10000000 }
+      }
+    },
+    "jobError": {
+      "description": "Why the job failed. rule is a named rule from a closed set of sentences this service owns - never a library message, never a stack trace, never a caller's bytes. Same discipline as the reconstruction service's notices.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "at", "retryable"],
+      "properties": {
+        "rule": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "at": { "type": "string", "format": "date-time" },
+        "retryable": {
+          "description": "Whether another delivery could plausibly succeed. A retryable failure is why the transport is allowed to redeliver; a non-retryable one is why the handler acknowledges a message it will never process rather than letting Pub/Sub redeliver it for a week.",
+          "type": "boolean"
+        },
+        "actor": { "$ref": "#/definitions/jobActor" }
+      }
+    },
+    "decisionEntry": {
+      "description": "One line of the decision log: what changed the state, when, and why. The model and the confidence are repeated here as well as on the record they came from, because the trail has to read top to bottom on camera without expanding anything.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "state", "actor", "summary"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "state": { "$ref": "#/definitions/jobState" },
+        "actor": { "$ref": "#/definitions/jobActor" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "model": { "type": "string", "maxLength": 64 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "latencyMs": { "type": "integer", "minimum": 0, "maximum": 600000 }
+      }
+    },
+    "jobActor": {
+      "description": "Which step of the loop acted. Closed so the dashboard can group by it, and so a step that does not exist yet cannot appear in a log without a schema change.",
+      "type": "string",
+      "enum": [
+        "ingest",
+        "triage",
+        "gate",
+        "reconstruction",
+        "physics",
+        "refit",
+        "report",
+        "operator"
+      ]
+    }
+  }
+}

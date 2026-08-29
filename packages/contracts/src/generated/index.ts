@@ -10,6 +10,7 @@
  * the entire point of defining the contract once.
  */
 
+export type * from "./agent-job.js";
 export type * from "./health.js";
 export type * from "./reconstruction-request.js";
 export type * from "./reconstruction-result.js";

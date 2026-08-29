@@ -56,17 +56,33 @@ async def healthz(settings: SettingsDep) -> HealthReport:
     response_model_exclude_none=True,
     summary="Readiness. Returns 503 until every dependency this service needs is usable.",
 )
-async def readyz(response: Response, settings: SettingsDep) -> HealthReport:
-    # Day 1 has no external dependency yet
-    dependencies: list[dict[str, object]] = []
-    degraded = any(dep.get("status") == "down" for dep in dependencies)
+async def readyz(request: Request, response: Response, settings: SettingsDep) -> HealthReport:
+    state = request.app.state
+    store = getattr(state, "store", None)
+    triager = getattr(state, "triager", None)
 
-    if degraded:
+    dependencies: list[dict[str, object]] = [
+        {
+            "name": "job-store",
+            "status": "ok" if store is not None else "down",
+            "detail": store.mode if store is not None else "not configured",
+        },
+        {
+            "name": "triage",
+            "status": "ok" if triager is not None else "down",
+            "detail": triager.model if triager is not None else "not configured",
+        },
+    ]
+
+    down = any(dep["status"] == "down" for dep in dependencies)
+    if down:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return HealthReport.model_validate(
-            {**_base(settings), "status": "down", "dependencies": dependencies}
-        )
 
     return HealthReport.model_validate(
-        {**_base(settings), "status": "ok", "dependencies": dependencies}
+        {
+            **_base(settings),
+            "status": "down" if down else "ok",
+            "detail": f"scan queue gs://{settings.scan_bucket}/{settings.scan_prefix}",
+            "dependencies": dependencies,
+        }
     )

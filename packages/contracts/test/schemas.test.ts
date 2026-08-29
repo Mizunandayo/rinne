@@ -6,6 +6,7 @@ import _addFormats from "ajv-formats";
 const Ajv = _Ajv as unknown as typeof _Ajv.default;
 const addFormats = _addFormats as unknown as typeof _addFormats.default;
 import {
+  agentJobSchema,
   healthSchema,
   reconstructionRequestSchema,
   reconstructionResultSchema,
@@ -17,6 +18,7 @@ import type { HealthReport } from "../src/generated/health.js";
 import type { SceneDescription } from "../src/generated/scene-description.js";
 
 const allSchemas = [
+  ["agent-job", agentJobSchema],
   ["health", healthSchema],
   ["reconstruction-request", reconstructionRequestSchema],
   ["reconstruction-result", reconstructionResultSchema],

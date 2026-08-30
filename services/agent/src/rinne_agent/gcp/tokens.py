@@ -13,10 +13,14 @@ logger = logging.getLogger(__name__)
 
 _METADATA_ROOT: Final = "http://metadata.google.internal/computeMetadata/v1"
 _METADATA_TOKEN_URL: Final = f"{_METADATA_ROOT}/instance/service-accounts/default/token"
+_METADATA_IDENTITY_URL: Final = f"{_METADATA_ROOT}/instance/service-accounts/default/identity"
 _METADATA_TIMEOUT_SECONDS: Final = 3.0
 
 
 _SKEW_SECONDS: Final = 120.0
+#: Cloud Run identity tokens are valid for an hour; the metadata server does
+#: not report an expiry alongside them, so this is the documented lifetime.
+_IDENTITY_LIFETIME_SECONDS: Final = 3600.0
 
 STORAGE_READ_SCOPE: Final = "https://www.googleapis.com/auth/devstorage.read_only"
 DATASTORE_SCOPE: Final = "https://www.googleapis.com/auth/datastore"
@@ -33,12 +37,15 @@ class TokenSource(Protocol):
 
     async def token(self, client: httpx2.AsyncClient, scope: str) -> str: ...
 
+    async def identity(self, client: httpx2.AsyncClient, audience: str) -> str: ...
+
 
 class MetadataTokenSource:
     """Cache one token per scope for the life of the process."""
 
     def __init__(self) -> None:
         self._cache: dict[str, tuple[str, float]] = {}
+        self._identities: dict[str, tuple[str, float]] = {}
 
     def invalidate(self, scope: str) -> None:
         self._cache.pop(scope, None)
@@ -79,6 +86,37 @@ class MetadataTokenSource:
             self._cache[scope] = (token, time.monotonic() + lifetime)
         return token
 
+    async def identity(self, client: httpx2.AsyncClient, audience: str) -> str:
+        """An ID token authenticates to Cloud Run; an access token authorises a
+        Google API. They are not interchangeable, so they are cached separately."""
+        cached = self._identities.get(audience)
+        if cached is not None and cached[1] - _SKEW_SECONDS > time.monotonic():
+            return cached[0]
+
+        try:
+            response = await client.get(
+                _METADATA_IDENTITY_URL,
+                params={"audience": audience, "format": "full"},
+                headers={"Metadata-Flavor": "Google"},
+                timeout=_METADATA_TIMEOUT_SECONDS,
+            )
+        except httpx2.HTTPError as exc:
+            logger.error("metadata server unreachable")
+            raise TokenError("credentials are unavailable") from exc
+
+        if response.status_code != 200:
+            logger.error(
+                "metadata server refused an identity token",
+                extra={"status": response.status_code},
+            )
+            raise TokenError("credentials are unavailable")
+
+        token = response.text.strip()
+        if not token:
+            raise TokenError("credentials are unavailable")
+        self._identities[audience] = (token, time.monotonic() + _IDENTITY_LIFETIME_SECONDS)
+        return token
+
 
 class StaticTokenSource:
     """Local development and tests. Never reaches a network."""
@@ -91,4 +129,8 @@ class StaticTokenSource:
 
     async def token(self, client: httpx2.AsyncClient, scope: str) -> str:
         del client, scope
+        return self._token
+
+    async def identity(self, client: httpx2.AsyncClient, audience: str) -> str:
+        del client, audience
         return self._token

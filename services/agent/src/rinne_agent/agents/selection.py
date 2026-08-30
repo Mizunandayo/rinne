@@ -1,0 +1,59 @@
+"""Section 7 step 2. Which physics test actually matters for this shape."""
+
+from __future__ import annotations
+
+from typing import Final, Literal
+
+from google.adk.agents import LlmAgent
+from google.genai import types
+from pydantic import BaseModel, Field
+
+SELECTION_INSTRUCTION: Final = (
+    "You are Rinne's test-selection step. Triage has already decided this object "
+    "warrants a physics review and has classified its shape. Choose the ONE test "
+    "that would actually reveal how it fails.\n"
+    "\n"
+    "tip - a lateral push near the top. Right for anything tall and narrow over a "
+    "small footprint, and for anything visibly leaning.\n"
+    "load - weight placed on the top face. Right for a stack, a shelf, or anything "
+    "whose failure mode is what sits on it.\n"
+    "drop - released from a short height. Right for an irregular or compact object "
+    "where the question is whether it survives being knocked off.\n"
+    "none - nothing here is worth simulating.\n"
+    "\n"
+    "confidence is your certainty in THIS choice. rationale is one or two plain "
+    "sentences naming the geometry you chose from. Never use emojis. Do not "
+    "estimate mass, force or dimensions; the service measures those."
+)
+
+
+class SelectionOutput(BaseModel):
+    """What the model returns. Forces and heights are the service's job, not its."""
+
+    kind: Literal["tip", "load", "drop", "none"] = Field(description="The single test to run.")
+    confidence: float = Field(ge=0.0, le=1.0, description="Certainty in this choice.")
+    rationale: str = Field(description="One or two sentences. No emojis.")
+
+
+def build_selection_agent(
+    *,
+    model: str,
+    temperature: float,
+    max_output_tokens: int,
+    thinking_budget: int,
+) -> LlmAgent:
+    """A leaf, like triage: transfer would let the model route round the state machine."""
+    return LlmAgent(
+        name="rinne_selection",
+        model=model,
+        instruction=SELECTION_INSTRUCTION,
+        output_schema=SelectionOutput,
+        output_key="selection",
+        disallow_transfer_to_parent=True,
+        disallow_transfer_to_peers=True,
+        generate_content_config=types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+        ),
+    )

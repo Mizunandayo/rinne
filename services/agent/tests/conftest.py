@@ -33,6 +33,7 @@ def settings() -> Settings:
         store_mode="memory",
         object_mode="memory",
         triage_mode="stub",
+        client_mode="memory",
         scan_bucket=SCAN_BUCKET,
         scan_prefix=SCAN_PREFIX,
     )

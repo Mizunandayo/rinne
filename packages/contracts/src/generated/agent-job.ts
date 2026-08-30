@@ -36,6 +36,28 @@ export type JobActor =
   | "refit"
   | "report"
   | "operator";
+/**
+ * Which physics test the agent selected. Mirrors the oneOf kinds in scene-description.schema.json; none is what a shape that cannot be tested gets.
+ */
+export type TestKind = "tip" | "load" | "drop" | "none";
+/**
+ * One advisory the physics service attached to a result. These are not failures; they are the caveats a viewer has to see before believing a verdict.
+ */
+export type NoticeCode =
+  | "collider-is-convex-hull"
+  | "collider-decimated"
+  | "center-of-mass-not-applied"
+  | "did-not-settle"
+  | "left-the-ground-plane"
+  | "load-test-not-implemented";
+/**
+ * Why the gate refused. A closed set so the cockpit can branch on it. physics-test-unsupported is the load test: the engine accepts the scene, applies no force, and settles to a stable that means nothing - so the agent asks a human rather than reporting it.
+ */
+export type GateReason =
+  | "low-reconstruction-confidence"
+  | "low-material-confidence"
+  | "physics-inconclusive"
+  | "physics-test-unsupported";
 
 /**
  * One scan, one Firestore document, one exhaustive state machine. This is the decision log section 7 promises, and the only place a job's state lives - there is no in-process table it could disagree with. It is a shared contract rather than a private shape because the cockpit reads it from TypeScript, and because generating the ten states into both languages is what turns "no implicit states" into a build gate instead of a discipline.
@@ -66,6 +88,10 @@ export interface AgentJob {
   source: ScanSource;
   triage?: TriageRecord;
   error?: JobError;
+  selection?: SelectionRecord;
+  reconstruction?: ReconstructionRecord;
+  simulation?: SimulationRecord;
+  gate?: GateRecord;
   /**
    * Append-only audit trail. Bounded so a redelivery storm or a buggy loop cannot inflate a document, and because Firestore charges by document size.
    *
@@ -134,6 +160,125 @@ export interface JobError {
    */
   retryable: boolean;
   actor?: JobActor;
+}
+/**
+ * Section 7 step 2. Different objects genuinely receive different tool calls, and this is where that shows in the log. The model chooses from a closed set; it does not invent a test.
+ */
+export interface SelectionRecord {
+  kind: TestKind;
+  rationale: string;
+  confidence: number;
+  model: string;
+  basis: "flash-selection-v1";
+  latencyMs: number;
+  promptTokens?: number;
+  responseTokens?: number;
+}
+/**
+ * What POST /v1/reconstruct returned, reduced to the fields the gate and the cockpit read. The full ReconstructionResult is not copied here - the mesh URI is the pointer to everything else.
+ */
+export interface ReconstructionRecord {
+  requestId: string;
+  meshUri: string;
+  confidence: number;
+  band: "low" | "medium" | "high";
+  calibrated: boolean;
+  material: "cardboard" | "wood" | "plastic" | "metal" | "glass" | "fabric" | "unknown";
+  materialConfidence: number;
+  massKilograms?: number;
+  faceCount?: number;
+  watertight?: boolean;
+  pipeline?: string;
+  latencyMs: number;
+}
+/**
+ * What POST /v1/simulate returned. inconclusive is the engine refusing to guess rather than an error, and the gate treats it as a first-class reason to ask a human.
+ */
+export interface SimulationRecord {
+  sceneId: string;
+  verdict: "stable" | "tipped" | "slid" | "inconclusive";
+  settled: boolean;
+  steps: number;
+  tiltDegrees: number;
+  driftMeters: number;
+  digest: string;
+  hullVertices?: number;
+  latencyMs: number;
+  /**
+   * Notice codes the physics service attached. load-test-not-implemented is the one the gate acts on: an unsupported test settles untouched and reports a meaningless stable.
+   *
+   * @maxItems 8
+   */
+  notices?:
+    | []
+    | [NoticeCode]
+    | [NoticeCode, NoticeCode]
+    | [NoticeCode, NoticeCode, NoticeCode]
+    | [NoticeCode, NoticeCode, NoticeCode, NoticeCode]
+    | [NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode]
+    | [NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode]
+    | [NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode, NoticeCode]
+    | [
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+        NoticeCode,
+      ];
+}
+/**
+ * THE DECLARED POLICY, section 7 step 3. Never a bare if: the record names the rule, the threshold it used, every input it compared, and whether those thresholds were ever measured. That is what makes a refusal auditable and the threshold configurable without a code change.
+ */
+export interface GateRecord {
+  /**
+   * The rule's name and version. A threshold change keeps the name; a change to WHAT is compared bumps it.
+   */
+  policy: "min-confidence-v1";
+  threshold: number;
+  /**
+   * The binding input - the lowest value the policy saw. This is the number that decided it.
+   */
+  observed: number;
+  /**
+   * Whether the thresholds were measured against real objects or are still documented guesses. Reported either way; it does not change the decision.
+   */
+  calibrated: boolean;
+  decision: "report" | "escalate";
+  /**
+   * @maxItems 6
+   */
+  inputs:
+    | []
+    | [GateInput]
+    | [GateInput, GateInput]
+    | [GateInput, GateInput, GateInput]
+    | [GateInput, GateInput, GateInput, GateInput]
+    | [GateInput, GateInput, GateInput, GateInput, GateInput]
+    | [GateInput, GateInput, GateInput, GateInput, GateInput, GateInput];
+  /**
+   * @maxItems 6
+   */
+  reasons?:
+    | []
+    | [GateReason]
+    | [GateReason, GateReason]
+    | [GateReason, GateReason, GateReason]
+    | [GateReason, GateReason, GateReason, GateReason]
+    | [GateReason, GateReason, GateReason, GateReason, GateReason]
+    | [GateReason, GateReason, GateReason, GateReason, GateReason, GateReason];
+  at: string;
+}
+/**
+ * One measured value the policy compared against one threshold. physics-verdict is 0.0 when the engine answered inconclusive and 1.0 otherwise, so every input renders the same way.
+ */
+export interface GateInput {
+  name: "reconstruction-confidence" | "material-confidence" | "physics-verdict";
+  value: number;
+  threshold: number;
+  passed: boolean;
 }
 /**
  * One line of the decision log: what changed the state, when, and why. The model and the confidence are repeated here as well as on the record they came from, because the trail has to read top to bottom on camera without expanding anything.

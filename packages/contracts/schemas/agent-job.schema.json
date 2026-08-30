@@ -26,8 +26,12 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
     },
-    "state": { "$ref": "#/definitions/jobState" },
-    "lastGoodState": { "$ref": "#/definitions/jobState" },
+    "state": {
+      "$ref": "#/definitions/jobState"
+    },
+    "lastGoodState": {
+      "$ref": "#/definitions/jobState"
+    },
     "attempts": {
       "description": "How many times the agent has begun work on this job. Section 12 forbids unbounded loops; this is where that rule is enforced for the agent path, and the ceiling of 6 matches the tool-loop cap and SceneDescription.provenance.refitIteration.",
       "type": "integer",
@@ -44,14 +48,34 @@
       "type": "string",
       "format": "date-time"
     },
-    "source": { "$ref": "#/definitions/scanSource" },
-    "triage": { "$ref": "#/definitions/triageRecord" },
-    "error": { "$ref": "#/definitions/jobError" },
+    "source": {
+      "$ref": "#/definitions/scanSource"
+    },
+    "triage": {
+      "$ref": "#/definitions/triageRecord"
+    },
+    "error": {
+      "$ref": "#/definitions/jobError"
+    },
+    "selection": {
+      "$ref": "#/definitions/selectionRecord"
+    },
+    "reconstruction": {
+      "$ref": "#/definitions/reconstructionRecord"
+    },
+    "simulation": {
+      "$ref": "#/definitions/simulationRecord"
+    },
+    "gate": {
+      "$ref": "#/definitions/gateRecord"
+    },
     "decisions": {
       "description": "Append-only audit trail. Bounded so a redelivery storm or a buggy loop cannot inflate a document, and because Firestore charges by document size.",
       "type": "array",
       "maxItems": 24,
-      "items": { "$ref": "#/definitions/decisionEntry" }
+      "items": {
+        "$ref": "#/definitions/decisionEntry"
+      }
     }
   },
   "definitions": {
@@ -82,7 +106,11 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$"
         },
-        "object": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "object": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
         "generation": {
           "description": "GCS reports generation as a decimal string, and it stays a string here for the same reason: it is an int64 identifier, not a number anything does arithmetic on. It is part of the jobId derivation, so overwriting an object produces a new job rather than silently reusing the old one.",
           "type": "string",
@@ -93,8 +121,15 @@
           "type": "string",
           "enum": ["image/jpeg", "image/png", "image/webp"]
         },
-        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 26214400 },
-        "receivedAt": { "type": "string", "format": "date-time" },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 26214400
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
         "eventId": {
           "description": "CloudEvent id of the delivery that created the job. Two deliveries of one object carry the same id; a genuine re-upload does not. Evidence, not a control - the control is the create-only write.",
           "type": "string",
@@ -123,17 +158,36 @@
           "minimum": 0,
           "maximum": 1
         },
-        "rationale": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        },
         "model": {
           "description": "Exact model id that produced this, so the log says which tier answered.",
           "type": "string",
           "minLength": 1,
           "maxLength": 64
         },
-        "basis": { "type": "string", "enum": ["flash-triage-v1"] },
-        "latencyMs": { "type": "integer", "minimum": 0, "maximum": 600000 },
-        "promptTokens": { "type": "integer", "minimum": 0, "maximum": 10000000 },
-        "responseTokens": { "type": "integer", "minimum": 0, "maximum": 10000000 }
+        "basis": {
+          "type": "string",
+          "enum": ["flash-triage-v1"]
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "responseTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        }
       }
     },
     "jobError": {
@@ -142,13 +196,22 @@
       "additionalProperties": false,
       "required": ["rule", "at", "retryable"],
       "properties": {
-        "rule": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "at": { "type": "string", "format": "date-time" },
+        "rule": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "retryable": {
           "description": "Whether another delivery could plausibly succeed. A retryable failure is why the transport is allowed to redeliver; a non-retryable one is why the handler acknowledges a message it will never process rather than letting Pub/Sub redeliver it for a week.",
           "type": "boolean"
         },
-        "actor": { "$ref": "#/definitions/jobActor" }
+        "actor": {
+          "$ref": "#/definitions/jobActor"
+        }
       }
     },
     "decisionEntry": {
@@ -157,13 +220,35 @@
       "additionalProperties": false,
       "required": ["at", "state", "actor", "summary"],
       "properties": {
-        "at": { "type": "string", "format": "date-time" },
-        "state": { "$ref": "#/definitions/jobState" },
-        "actor": { "$ref": "#/definitions/jobActor" },
-        "summary": { "type": "string", "minLength": 1, "maxLength": 240 },
-        "model": { "type": "string", "maxLength": 64 },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "latencyMs": { "type": "integer", "minimum": 0, "maximum": 600000 }
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "state": {
+          "$ref": "#/definitions/jobState"
+        },
+        "actor": {
+          "$ref": "#/definitions/jobActor"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        }
       }
     },
     "jobActor": {
@@ -179,6 +264,285 @@
         "report",
         "operator"
       ]
+    },
+    "testKind": {
+      "description": "Which physics test the agent selected. Mirrors the oneOf kinds in scene-description.schema.json; none is what a shape that cannot be tested gets.",
+      "type": "string",
+      "enum": ["tip", "load", "drop", "none"]
+    },
+    "selectionRecord": {
+      "description": "Section 7 step 2. Different objects genuinely receive different tool calls, and this is where that shows in the log. The model chooses from a closed set; it does not invent a test.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "rationale", "confidence", "model", "basis", "latencyMs"],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/testKind"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "basis": {
+          "type": "string",
+          "enum": ["flash-selection-v1"]
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "responseTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      }
+    },
+    "reconstructionRecord": {
+      "description": "What POST /v1/reconstruct returned, reduced to the fields the gate and the cockpit read. The full ReconstructionResult is not copied here - the mesh URI is the pointer to everything else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "meshUri",
+        "confidence",
+        "band",
+        "calibrated",
+        "material",
+        "materialConfidence",
+        "latencyMs"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "meshUri": {
+          "type": "string",
+          "pattern": "^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/.{1,512}$"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "band": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "calibrated": {
+          "type": "boolean"
+        },
+        "material": {
+          "type": "string",
+          "enum": ["cardboard", "wood", "plastic", "metal", "glass", "fabric", "unknown"]
+        },
+        "materialConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "massKilograms": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5000
+        },
+        "faceCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "watertight": {
+          "type": "boolean"
+        },
+        "pipeline": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        }
+      }
+    },
+    "simulationRecord": {
+      "description": "What POST /v1/simulate returned. inconclusive is the engine refusing to guess rather than an error, and the gate treats it as a first-class reason to ask a human.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sceneId",
+        "verdict",
+        "settled",
+        "steps",
+        "tiltDegrees",
+        "driftMeters",
+        "digest",
+        "latencyMs"
+      ],
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["stable", "tipped", "slid", "inconclusive"]
+        },
+        "settled": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20000
+        },
+        "tiltDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180
+        },
+        "driftMeters": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{16}$"
+        },
+        "hullVertices": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "notices": {
+          "description": "Notice codes the physics service attached. load-test-not-implemented is the one the gate acts on: an unsupported test settles untouched and reports a meaningless stable.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/definitions/noticeCode" }
+        }
+      }
+    },
+    "noticeCode": {
+      "description": "One advisory the physics service attached to a result. These are not failures; they are the caveats a viewer has to see before believing a verdict.",
+      "type": "string",
+      "enum": [
+        "collider-is-convex-hull",
+        "collider-decimated",
+        "center-of-mass-not-applied",
+        "did-not-settle",
+        "left-the-ground-plane",
+        "load-test-not-implemented"
+      ]
+    },
+    "gateInput": {
+      "description": "One measured value the policy compared against one threshold. physics-verdict is 0.0 when the engine answered inconclusive and 1.0 otherwise, so every input renders the same way.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "threshold", "passed"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["reconstruction-confidence", "material-confidence", "physics-verdict"]
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gateReason": {
+      "description": "Why the gate refused. A closed set so the cockpit can branch on it. physics-test-unsupported is the load test: the engine accepts the scene, applies no force, and settles to a stable that means nothing - so the agent asks a human rather than reporting it.",
+      "type": "string",
+      "enum": [
+        "low-reconstruction-confidence",
+        "low-material-confidence",
+        "physics-inconclusive",
+        "physics-test-unsupported"
+      ]
+    },
+    "gateRecord": {
+      "description": "THE DECLARED POLICY, section 7 step 3. Never a bare if: the record names the rule, the threshold it used, every input it compared, and whether those thresholds were ever measured. That is what makes a refusal auditable and the threshold configurable without a code change.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "threshold", "observed", "calibrated", "decision", "inputs", "at"],
+      "properties": {
+        "policy": {
+          "description": "The rule's name and version. A threshold change keeps the name; a change to WHAT is compared bumps it.",
+          "type": "string",
+          "enum": ["min-confidence-v1"]
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "observed": {
+          "description": "The binding input - the lowest value the policy saw. This is the number that decided it.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calibrated": {
+          "description": "Whether the thresholds were measured against real objects or are still documented guesses. Reported either way; it does not change the decision.",
+          "type": "boolean"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["report", "escalate"]
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/definitions/gateInput"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/definitions/gateReason"
+          }
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
     }
   }
 }

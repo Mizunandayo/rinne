@@ -10,10 +10,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from rinne_agent.agents.runtime import Triager, build_triager
+from rinne_agent.agents.runtime import Selector, Triager, build_selector, build_triager
+from rinne_agent.agents.selection import build_selection_agent
 from rinne_agent.agents.triage import build_triage_agent
+from rinne_agent.clients.physics import build_simulator
+from rinne_agent.clients.reconstruction import build_reconstructor
 from rinne_agent.config import Settings, get_settings
+from rinne_agent.decide import Decider
 from rinne_agent.errors import RuleError
+from rinne_agent.gate import Thresholds
 from rinne_agent.gcp.firestore import JobStore, build_store
 from rinne_agent.gcp.objects import build_reader
 from rinne_agent.gcp.tokens import MetadataTokenSource, StaticTokenSource, TokenSource
@@ -25,6 +30,7 @@ from rinne_agent.middleware import (
 )
 from rinne_agent.pipeline import Pipeline
 from rinne_agent.routes import events, health, jobs
+from rinne_agent.scene import SolverSettings
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,44 @@ def build_triage(settings: Settings) -> Triager:
     )
 
 
+def build_selection(settings: Settings) -> Selector:
+    if settings.triage_mode == "flash":
+        configure_vertex(settings)
+    agent = (
+        build_selection_agent(
+            model=settings.triage_model,
+            temperature=settings.triage_temperature,
+            max_output_tokens=settings.triage_max_output_tokens,
+            thinking_budget=settings.triage_thinking_budget,
+        )
+        if settings.triage_mode == "flash"
+        else None
+    )
+    return build_selector(
+        mode=settings.triage_mode,
+        agent=agent,
+        app_name="rinne-agent",
+        model=settings.triage_model,
+        timeout_seconds=settings.triage_timeout_seconds,
+    )
+
+
+def build_solver(settings: Settings) -> SolverSettings:
+    return SolverSettings(
+        timestep_seconds=settings.solver_timestep_seconds,
+        max_steps=settings.solver_max_steps,
+        seed=settings.solver_seed,
+        ground_friction=settings.ground_friction,
+        ground_restitution=settings.ground_restitution,
+        tip_force_ratio=settings.tip_force_ratio,
+        tip_height_ratio=settings.tip_height_ratio,
+        tip_direction_degrees=settings.tip_direction_degrees,
+        tip_duration_seconds=settings.tip_duration_seconds,
+        drop_height_meters=settings.drop_height_meters,
+        load_multiple=settings.load_multiple,
+    )
+
+
 def build_tokens(settings: Settings) -> TokenSource:
     return MetadataTokenSource() if settings.is_cloud_run else StaticTokenSource()
 
@@ -93,8 +137,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             backoff_seconds=resolved.firestore_backoff_seconds,
         )
         triager = build_triage(resolved)
+        selector = build_selection(resolved)
         app.state.store = store
         app.state.triager = triager
+        app.state.selector = selector
+        app.state.decider = Decider(
+            selector=selector,
+            reconstructor=build_reconstructor(
+                mode=resolved.client_mode,
+                base_url=resolved.reconstruction_service_url,
+                tokens=tokens,
+                timeout_seconds=resolved.reconstruction_timeout_seconds,
+            ),
+            simulator=build_simulator(
+                mode=resolved.client_mode,
+                base_url=resolved.physics_service_url,
+                tokens=tokens,
+                timeout_seconds=resolved.physics_timeout_seconds,
+            ),
+            thresholds=Thresholds(
+                reconstruction_confidence=resolved.gate_reconstruction_confidence,
+                material_confidence=resolved.gate_material_confidence,
+            ),
+            solver=build_solver(resolved),
+        )
         app.state.pipeline = Pipeline(
             store=store,
             reader=build_reader(
@@ -104,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_bytes=resolved.max_scan_bytes,
             ),
             triager=triager,
+            decider=app.state.decider,
             max_attempts=resolved.max_attempts,
         )
         logger.info(
@@ -114,6 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "env": resolved.app_env,
                 "store": store.mode,
                 "triage": triager.model,
+                "clients": resolved.client_mode,
                 "scanQueue": f"gs://{resolved.scan_bucket}/{resolved.scan_prefix}",
             },
         )

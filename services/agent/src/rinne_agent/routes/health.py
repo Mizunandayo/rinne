@@ -60,6 +60,7 @@ async def readyz(request: Request, response: Response, settings: SettingsDep) ->
     state = request.app.state
     store = getattr(state, "store", None)
     triager = getattr(state, "triager", None)
+    decider = getattr(state, "decider", None)
 
     dependencies: list[dict[str, object]] = [
         {
@@ -71,6 +72,15 @@ async def readyz(request: Request, response: Response, settings: SettingsDep) ->
             "name": "triage",
             "status": "ok" if triager is not None else "down",
             "detail": triager.model if triager is not None else "not configured",
+        },
+        {
+            "name": "decision-loop",
+            "status": "ok" if decider is not None else "down",
+            "detail": f"{settings.client_mode} clients, gate "
+            f"{settings.gate_reconstruction_confidence:.2f}/"
+            f"{settings.gate_material_confidence:.2f}"
+            if decider is not None
+            else "not configured",
         },
     ]
 

@@ -42,8 +42,13 @@ def test_the_decision_trail_reads_top_to_bottom(client: TestClient) -> None:
     headers, body = cloudevent(storage_object())
     ack = client.post("/v1/events/scan", content=body, headers=headers).json()
     decisions = client.get(f"/v1/jobs/{ack['jobId']}").json()["decisions"]
-    assert [entry["state"] for entry in decisions] == ["queued", "triaged"]
-    assert [entry["actor"] for entry in decisions] == ["ingest", "triage"]
+    assert [entry["state"] for entry in decisions] == [
+        "queued",
+        "triaged",
+        "simulating",
+        "reporting",
+    ]
+    assert [entry["actor"] for entry in decisions] == ["ingest", "triage", "gate", "gate"]
 
 
 def test_an_unknown_job_is_a_404_with_the_standard_envelope(client: TestClient) -> None:

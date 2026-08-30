@@ -57,7 +57,6 @@ def test_the_record_names_the_rule_and_every_input_it_compared() -> None:
     """Never a bare if. The refusal has to be auditable from the document alone."""
     record = evaluate(reconstruction=recon(), simulation=sim(), thresholds=THRESHOLDS, at=STAMP)
     assert record.policy.value == "min-confidence-v1"
-    assert record.threshold == 0.70
     assert len(record.inputs) == 3
     assert [item.name.value for item in record.inputs] == [
         "reconstruction-confidence",
@@ -67,7 +66,10 @@ def test_the_record_names_the_rule_and_every_input_it_compared() -> None:
     assert all(item.threshold is not None for item in record.inputs)
 
 
-def test_observed_is_the_binding_input() -> None:
+def test_observed_and_threshold_come_from_the_same_input() -> None:
+    """Otherwise the headline reads "observed 0.5 vs threshold 0.7 -> report",
+    which is two different inputs' numbers put side by side, and looks like a
+    policy the gate ignored."""
     record = evaluate(
         reconstruction=recon(confidence=0.85, material=0.12),
         simulation=sim(),
@@ -75,6 +77,32 @@ def test_observed_is_the_binding_input() -> None:
         at=STAMP,
     )
     assert record.observed == pytest.approx(0.12)
+    assert record.threshold == pytest.approx(0.50)
+
+
+def test_a_reported_job_never_shows_observed_below_threshold() -> None:
+    """The exact bottle that exposed this: material 0.50 against its own 0.50 is a
+    pass, but it was being printed against reconstruction's 0.70."""
+    record = evaluate(
+        reconstruction=recon(confidence=0.9222, material=0.50),
+        simulation=sim(verdict="tipped"),
+        thresholds=THRESHOLDS,
+        at=STAMP,
+    )
+    assert record.decision is Decision.report
+    assert record.observed >= record.threshold
+
+
+def test_an_escalation_shows_the_input_that_actually_failed() -> None:
+    record = evaluate(
+        reconstruction=recon(confidence=0.22, material=0.95),
+        simulation=sim(),
+        thresholds=THRESHOLDS,
+        at=STAMP,
+    )
+    assert record.observed == pytest.approx(0.22)
+    assert record.threshold == pytest.approx(0.70)
+    assert record.observed < record.threshold
 
 
 def test_low_reconstruction_confidence_escalates() -> None:

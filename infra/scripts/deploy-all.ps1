@@ -158,6 +158,16 @@ if (-not $SkipBuild -and -not $UseCloudBuild) {
 
 $deployed = @{}
 
+function Grant-Invoker {
+    param([Parameter(Mandatory)][string]$Service, [Parameter(Mandatory)][string]$Member)
+    Invoke-Gcloud run services add-iam-policy-binding $Service `
+        --region=$Region --project=$ProjectId `
+        --member="serviceAccount:$Member@$ProjectId.iam.gserviceaccount.com" `
+        --role="roles/run.invoker" `
+        --quiet -Quiet | Out-Null
+    Write-Ok "  $Member granted roles/run.invoker on $Service only"
+}
+
 foreach ($key in @('physics','reconstruction','agent','web')) {
     if ($Services -notcontains $key) { continue }
 
@@ -304,18 +314,21 @@ options:
     $deployed[$key] = $url
     Write-Ok "$($svc.Name) -> $url"
 
-    # Per-service invoker binding
+    # INBOUND: who may call the service just deployed.
     if (-not $svc.Public) {
         $invokers = @('rinne-web-sa')
-        if (@('reconstruction','physics') -contains $key) { $invokers += 'rinne-agent-sa' }
         if ($key -eq 'agent') { $invokers += 'rinne-eventarc-sa' }
         foreach ($invoker in $invokers) {
-            Invoke-Gcloud run services add-iam-policy-binding $svc.Name `
-                --region=$Region --project=$ProjectId `
-                --member="serviceAccount:$invoker@$ProjectId.iam.gserviceaccount.com" `
-                --role="roles/run.invoker" `
-                --quiet -Quiet | Out-Null
-            Write-Ok "  $invoker granted roles/run.invoker on $($svc.Name) only"
+            Grant-Invoker -Service $svc.Name -Member $invoker
+        }
+    }
+
+    # OUTBOUND: what the service just deployed may call. This belongs to the
+    # CALLER's step, not the callee's - keyed on the callee, `-Services agent`
+    # would silently deploy an agent that gets a 403 from physics.
+    if ($key -eq 'agent') {
+        foreach ($callee in @('rinne-reconstruction','rinne-physics')) {
+            Grant-Invoker -Service $callee -Member 'rinne-agent-sa'
         }
     }
 }

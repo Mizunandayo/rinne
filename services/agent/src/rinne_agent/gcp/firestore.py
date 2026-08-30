@@ -21,18 +21,11 @@ _FIRESTORE_ROOT: Final = "https://firestore.googleapis.com/v1"
 
 QueryParams = list[tuple[str, str | int | float | bool | None]]
 
-_FIELD_PATHS: Final[tuple[str, ...]] = (
-    "schemaVersion",
-    "jobId",
-    "state",
-    "lastGoodState",
-    "attempts",
-    "createdAt",
-    "updatedAt",
-    "source",
-    "triage",
-    "error",
-    "decisions",
+# DERIVED, never hand-kept. A PATCH only applies the fields the mask names, so a
+# field missing here is written by nobody and dropped in silence - which is
+# exactly what happened to the Day 5 records when this was a literal list.
+_FIELD_PATHS: Final[tuple[str, ...]] = tuple(
+    field.alias or name for name, field in AgentJob.model_fields.items()
 )
 
 _PRECONDITION_STATUSES: Final[frozenset[str]] = frozenset(

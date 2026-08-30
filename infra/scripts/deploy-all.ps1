@@ -109,7 +109,7 @@ $config = @{
         Public      = $false
         MaxInstances= 3
         Concurrency = 20
-        TimeoutSec  = 300
+        TimeoutSec  = 420
         Memory      = '1Gi'
         Cpu         = '1'
         Env         = @{
@@ -125,6 +125,14 @@ $config = @{
             SCAN_BUCKET         = "rinne-scans-$ProjectId"
             SCAN_PREFIX         = 'scan-queue/'
             MAX_ATTEMPTS        = '3'
+            CLIENT_MODE         = 'http'
+            RECONSTRUCTION_TIMEOUT_SECONDS = '280'
+            PHYSICS_TIMEOUT_SECONDS        = '60'
+            GATE_RECONSTRUCTION_CONFIDENCE = '0.70'
+            GATE_MATERIAL_CONFIDENCE       = '0.50'
+            SOLVER_SEED         = '42'
+            SOLVER_MAX_STEPS    = '900'
+            TIP_FORCE_RATIO     = '0.5'
         }
     }
     web = @{
@@ -217,20 +225,27 @@ options:
     $envMap['GCP_REGION']      = $Region
     $envMap['GCP_PROJECT_ID']  = $ProjectId
 
-    if ($key -eq 'web') {
-        if (-not $deployed.ContainsKey('physics') -or -not $deployed.ContainsKey('agent') `
-            -or -not $deployed.ContainsKey('reconstruction')) {
-            # Recover the URLs when web is deployed on its own.
-            foreach ($dep in @('physics','reconstruction','agent')) {
-                if (-not $deployed.ContainsKey($dep)) {
-                    $url = (Invoke-Gcloud run services describe $config[$dep].Name `
-                        --region=$Region --project=$ProjectId `
-                        --format="value(status.url)" -Quiet) -join ''
-                    if (-not $url) { throw "$($config[$dep].Name) is not deployed. Deploy it before web." }
-                    $deployed[$dep] = "$url".Trim()
-                }
-            }
+    # Recover the URLs of anything deployed earlier, so a single service can be
+    # redeployed on its own without losing what it is wired to.
+    $needs = @()
+    if ($key -eq 'agent') { $needs = @('physics','reconstruction') }
+    if ($key -eq 'web')   { $needs = @('physics','reconstruction','agent') }
+    foreach ($dep in $needs) {
+        if (-not $deployed.ContainsKey($dep)) {
+            $url = (Invoke-Gcloud run services describe $config[$dep].Name `
+                --region=$Region --project=$ProjectId `
+                --format="value(status.url)" -Quiet) -join ''
+            if (-not $url) { throw "$($config[$dep].Name) is not deployed. Deploy it before $($svc.Name)." }
+            $deployed[$dep] = "$url".Trim()
         }
+    }
+
+    if ($key -eq 'agent') {
+        $envMap['RECONSTRUCTION_SERVICE_URL'] = $deployed['reconstruction']
+        $envMap['PHYSICS_SERVICE_URL']        = $deployed['physics']
+    }
+
+    if ($key -eq 'web') {
         $envMap['PHYSICS_SERVICE_URL']        = $deployed['physics']
         $envMap['AGENT_SERVICE_URL']          = $deployed['agent']
         $envMap['RECONSTRUCTION_SERVICE_URL'] = $deployed['reconstruction']
@@ -292,7 +307,7 @@ options:
     # Per-service invoker binding
     if (-not $svc.Public) {
         $invokers = @('rinne-web-sa')
-        if ($key -eq 'reconstruction') { $invokers += 'rinne-agent-sa' }
+        if (@('reconstruction','physics') -contains $key) { $invokers += 'rinne-agent-sa' }
         if ($key -eq 'agent') { $invokers += 'rinne-eventarc-sa' }
         foreach ($invoker in $invokers) {
             Invoke-Gcloud run services add-iam-policy-binding $svc.Name `
@@ -370,9 +385,9 @@ if (-not $SkipTrigger -and $Services -contains 'agent') {
         try {
             Invoke-Gcloud pubsub subscriptions update $subId `
                 --project=$ProjectId `
-                --ack-deadline=120 `
+                --ack-deadline=600 `
                 --quiet -Quiet | Out-Null
-            Write-Ok "  transport subscription $subId ack-deadline=120s"
+            Write-Ok "  transport subscription $subId ack-deadline=600s"
         } catch {
             Write-Warning "Could not set the ack deadline on $subId. Eventarc may have reclaimed it."
             Write-Warning $_.Exception.Message

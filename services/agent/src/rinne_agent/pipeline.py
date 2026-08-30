@@ -1,4 +1,4 @@
-"""One delivery, one job, one decision. The Day 4 half of the section 7 loop"""
+"""One delivery, one job, one decision. The whole section 7 loop, ingest to gate"""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from typing import Literal
 from rinne_agent.agents.runtime import Triager
 from rinne_agent.contracts import AgentJob
 from rinne_agent.contracts.agent_job import JobActor, JobState, TriageRecord
+from rinne_agent.decide import Decider
 from rinne_agent.errors import RuleError
 from rinne_agent.gcp.firestore import JobStore, PreconditionFailedError, StoredJob
 from rinne_agent.gcp.objects import ScanReader, check_magic
 from rinne_agent.ingest import ScanEvent
-from rinne_agent.state import fail, now, transition
+from rinne_agent.state import TERMINAL, fail, now, transition
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class Pipeline:
     store: JobStore
     reader: ScanReader
     triager: Triager
+    decider: Decider
     max_attempts: int
 
     async def handle(self, event: ScanEvent) -> JobResult:
@@ -84,7 +86,6 @@ class Pipeline:
         logger.info("job created", extra={"jobId": event.job_id})
         return created
 
-    # -- step 2: section 7 step 1 ---------------------------------------
     async def _triage(self, stored: StoredJob, event: ScanEvent) -> JobResult:
         image = await self.reader.read(
             bucket=event.bucket, object_name=event.object_name, generation=event.generation
@@ -127,7 +128,7 @@ class Pipeline:
         ).model_copy(update={"triage": record})
 
         try:
-            await self.store.save(moved, expected=stored.update_time)
+            saved = await self.store.save(moved, expected=stored.update_time)
         except PreconditionFailedError:
             logger.info("lost the transition race", extra={"jobId": event.job_id})
             return JobResult(outcome="duplicate", job_id=event.job_id, state=stored.job.state)
@@ -143,28 +144,50 @@ class Pipeline:
                 "latencyMs": result.latency_ms,
             },
         )
-        return JobResult(outcome="processed", job_id=event.job_id, state=target)
+        if target is JobState.skipped_low_risk:
+            return JobResult(outcome="processed", job_id=event.job_id, state=target)
+        return await self._decide(saved, event, image)
+
+    async def _decide(self, stored: StoredJob, event: ScanEvent, image: bytes) -> JobResult:
+        decided = await self.decider.decide(stored.job, image=image, mime_type=event.content_type)
+        try:
+            await self.store.save(decided, expected=stored.update_time)
+        except PreconditionFailedError:
+            logger.info("lost the decision race", extra={"jobId": event.job_id})
+            return JobResult(outcome="duplicate", job_id=event.job_id, state=stored.job.state)
+        return JobResult(outcome="processed", job_id=event.job_id, state=decided.state)
 
     # failure: reachable from any non-terminal state
     async def _record_failure(self, stored: StoredJob, exc: RuleError) -> AgentJob:
-        failed = fail(stored.job, rule=exc.rule, retryable=exc.retryable, actor=exc.actor)
-        try:
-            await self.store.save(failed, expected=stored.update_time)
-        except PreconditionFailedError:
-            # Someone else moved the job. Their version is the truth.
-            logger.info("failure not recorded; the job had already moved on")
-        except RuleError:
-            logger.error("could not record the failure", extra={"jobId": stored.job.job_id})
-        logger.warning(
-            "job failed",
-            extra={
-                "jobId": stored.job.job_id,
-                "rule": exc.rule,
-                "retryable": exc.retryable,
-                "lastGoodState": stored.job.state.value,
-            },
-        )
-        return failed
+        """The caller may hold a version older than Firestore, because triage saves
+        before the decision half runs. Re-read once rather than lose the error."""
+        current = stored
+        for final in (False, True):
+            if current.job.state in TERMINAL:
+                return current.job
+            failed = fail(current.job, rule=exc.rule, retryable=exc.retryable, actor=exc.actor)
+            try:
+                await self.store.save(failed, expected=current.update_time)
+            except PreconditionFailedError:
+                fresh = None if final else await self.store.get(current.job.job_id)
+                if fresh is None:
+                    logger.info("failure not recorded; the job had already moved on")
+                    return current.job
+                current = fresh
+                continue
+            except RuleError:
+                logger.error("could not record the failure", extra={"jobId": current.job.job_id})
+            logger.warning(
+                "job failed",
+                extra={
+                    "jobId": current.job.job_id,
+                    "rule": exc.rule,
+                    "retryable": exc.retryable,
+                    "lastGoodState": current.job.state.value,
+                },
+            )
+            return failed
+        return current.job
 
 
 def _new_job(event: ScanEvent) -> AgentJob:

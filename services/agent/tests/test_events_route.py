@@ -5,9 +5,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from conftest import cloudevent, pubsub_push, storage_object
-from rinne_agent.agents.runtime import StubTriager, TriageOutcome
+from rinne_agent.agents.runtime import StubSelector, StubTriager, TriageOutcome
 from rinne_agent.agents.triage import TriageOutput
+from rinne_agent.clients.physics import StubSimulator
+from rinne_agent.clients.reconstruction import StubReconstructor
 from rinne_agent.contracts.agent_job import JobState
+from rinne_agent.decide import Decider
 from rinne_agent.errors import RuleError
 from rinne_agent.pipeline import Pipeline
 
@@ -36,16 +39,32 @@ def swap(app: FastAPI, **changes: object) -> None:
         store=changes.get("store", current.store),  # type: ignore[arg-type]
         reader=changes.get("reader", current.reader),  # type: ignore[arg-type]
         triager=changes.get("triager", current.triager),  # type: ignore[arg-type]
+        decider=changes.get("decider", current.decider),  # type: ignore[arg-type]
         max_attempts=changes.get("max_attempts", current.max_attempts),  # type: ignore[arg-type]
     )
 
 
-def test_a_cloudevent_produces_a_triaged_job(client: TestClient) -> None:
+def redecide(app: FastAPI, **changes: object) -> None:
+    """The same, one level down, for the collaborators of the decision half."""
+    now: Decider = app.state.pipeline.decider
+    swap(
+        app,
+        decider=Decider(
+            selector=changes.get("selector", now.selector),  # type: ignore[arg-type]
+            reconstructor=changes.get("reconstructor", now.reconstructor),  # type: ignore[arg-type]
+            simulator=changes.get("simulator", now.simulator),  # type: ignore[arg-type]
+            thresholds=changes.get("thresholds", now.thresholds),  # type: ignore[arg-type]
+            solver=changes.get("solver", now.solver),  # type: ignore[arg-type]
+        ),
+    )
+
+
+def test_a_cloudevent_runs_the_whole_loop_to_reporting(client: TestClient) -> None:
     response = post(client, *cloudevent(storage_object()))
     assert response.status_code == 200
     body = response.json()
     assert body["outcome"] == "processed"
-    assert body["state"] == JobState.triaged.value
+    assert body["state"] == JobState.reporting.value
     assert body["jobId"].startswith("scan-")
 
 
@@ -66,7 +85,7 @@ def test_a_redelivery_is_acknowledged_and_does_no_work(client: TestClient) -> No
 
 
 def test_a_low_risk_object_terminates_in_skipped_low_risk(app: FastAPI, client: TestClient) -> None:
-    """The most common outcome, and a legitimate one."""
+    """The most common outcome, and a legitimate one. Nothing downstream runs."""
     swap(app, triager=StubTriager(review=False, shape="flat-wide"))
     body = post(client, *cloudevent(storage_object())).json()
     assert body["state"] == JobState.skipped_low_risk.value
@@ -74,6 +93,54 @@ def test_a_low_risk_object_terminates_in_skipped_low_risk(app: FastAPI, client: 
     job = client.get(f"/v1/jobs/{body['jobId']}").json()
     assert job["state"] == "skipped_low_risk"
     assert job["triage"]["review"] is False
+    assert "selection" not in job
+
+
+def test_a_reviewed_job_carries_every_record_the_loop_produced(client: TestClient) -> None:
+    body = post(client, *cloudevent(storage_object())).json()
+    job = client.get(f"/v1/jobs/{body['jobId']}").json()
+    assert job["selection"]["kind"] == "tip"
+    assert job["reconstruction"]["meshUri"].startswith("gs://")
+    assert job["simulation"]["verdict"] == "stable"
+    assert job["gate"]["decision"] == "report"
+    assert job["gate"]["policy"] == "min-confidence-v1"
+
+
+def test_low_confidence_escalates_to_awaiting_verification(
+    app: FastAPI, client: TestClient
+) -> None:
+    """Section 7 step 3. The gate is the only thing that decides this."""
+    redecide(app, reconstructor=StubReconstructor(confidence=0.22))
+    body = post(client, *cloudevent(storage_object())).json()
+    assert body["state"] == JobState.awaiting_verification.value
+
+    job = client.get(f"/v1/jobs/{body['jobId']}").json()
+    assert job["gate"]["decision"] == "escalate"
+    assert job["gate"]["reasons"] == ["low-reconstruction-confidence"]
+    assert job["decisions"][-1]["actor"] == "gate"
+
+
+def test_an_unsupported_physics_test_escalates_rather_than_reporting_stable(
+    app: FastAPI, client: TestClient
+) -> None:
+    """A load test settles untouched and returns stable. Reporting that would be a lie."""
+    redecide(app, simulator=StubSimulator(notices=["load-test-not-implemented"]))
+    body = post(client, *cloudevent(storage_object())).json()
+    assert body["state"] == JobState.awaiting_verification.value
+
+    job = client.get(f"/v1/jobs/{body['jobId']}").json()
+    assert job["gate"]["reasons"] == ["physics-test-unsupported"]
+
+
+def test_a_selection_of_none_fails_the_job_from_triaged(app: FastAPI, client: TestClient) -> None:
+    redecide(app, selector=StubSelector(kind="none"))
+    body = post(client, *cloudevent(storage_object())).json()
+    assert body["outcome"] == "failed"
+
+    job = client.get(f"/v1/jobs/{body['jobId']}").json()
+    assert job["state"] == "failed"
+    assert job["lastGoodState"] == "triaged"
+    assert job["error"]["actor"] == "gate"
 
 
 def test_an_object_in_another_bucket_is_acknowledged_not_retried(client: TestClient) -> None:
@@ -165,7 +232,7 @@ def test_the_recorded_triage_carries_the_model_and_the_shape(
     assert job["triage"]["shape"] == shape
     assert job["triage"]["model"] == "stub-triage"
     assert job["triage"]["basis"] == "flash-triage-v1"
-    assert job["decisions"][-1]["actor"] == "triage"
+    assert [entry["actor"] for entry in job["decisions"]][1] == "triage"
 
 
 def test_the_output_schema_of_the_stub_matches_the_model_contract() -> None:

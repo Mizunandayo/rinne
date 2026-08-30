@@ -20,6 +20,32 @@ def test_production_defaults_call_the_real_things() -> None:
     assert settings.store_mode == "firestore"
     assert settings.object_mode == "gcs"
     assert settings.triage_mode == "flash"
+    assert settings.client_mode == "http"
+
+
+def test_the_declared_gate_policy_has_defaults_the_record_can_report() -> None:
+    """These two numbers appear verbatim in every escalation the agent writes."""
+    settings = Settings()
+    assert settings.gate_reconstruction_confidence == 0.70
+    assert settings.gate_material_confidence == 0.50
+
+
+def test_a_gate_threshold_outside_zero_to_one_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(gate_reconstruction_confidence=1.4)
+
+
+def test_the_solver_defaults_are_the_ones_the_physics_service_will_replay() -> None:
+    """services/physics reads every one of these off the scene, so this is the
+    single definition of them and determinism depends on it."""
+    settings = Settings()
+    assert settings.solver_seed == 42
+    assert settings.solver_timestep_seconds == 1 / 60
+    assert settings.solver_max_steps == 900
+
+
+def test_the_tip_force_is_the_measured_ratio_not_a_fixed_newton_value() -> None:
+    assert Settings().tip_force_ratio == 0.5
 
 
 def test_the_scan_queue_is_a_separate_bucket_from_the_artifacts_bucket() -> None:

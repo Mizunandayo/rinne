@@ -186,3 +186,155 @@ describe("AgentJob", () => {
     ).toThrow(ContractViolationError);
   });
 });
+
+const triaged: AgentJob = {
+  ...queued,
+  state: "triaged",
+  triage: {
+    review: true,
+    shape: "tall-narrow",
+    confidence: 0.95,
+    rationale: "Tall narrow body over a small footprint.",
+    model: "gemini-3.5-flash",
+    basis: "flash-triage-v1",
+    latencyMs: 1840,
+  },
+};
+
+const reported: AgentJob = {
+  ...triaged,
+  state: "reporting",
+  selection: {
+    kind: "tip",
+    rationale: "Tall and narrow, so a lateral push is the failure worth testing.",
+    confidence: 0.91,
+    model: "gemini-3.5-flash",
+    basis: "flash-selection-v1",
+    latencyMs: 1100,
+  },
+  reconstruction: {
+    requestId: "scan-9f2c41ab77d05e13",
+    meshUri: "gs://rinne-artifacts-rinnehackathon/meshes/scan-9f2c41ab77d05e13.glb",
+    confidence: 0.81,
+    band: "high",
+    calibrated: false,
+    material: "wood",
+    materialConfidence: 0.6,
+    latencyMs: 41_200,
+  },
+  simulation: {
+    sceneId: "scan-9f2c41ab77d05e13",
+    verdict: "stable",
+    settled: true,
+    steps: 240,
+    tiltDegrees: 0.97,
+    driftMeters: 0.004,
+    digest: "2aa41a6cdf3d89f5",
+    latencyMs: 480,
+  },
+  gate: {
+    policy: "min-confidence-v1",
+    threshold: 0.7,
+    observed: 0.6,
+    calibrated: false,
+    decision: "report",
+    inputs: [
+      { name: "reconstruction-confidence", value: 0.81, threshold: 0.7, passed: true },
+      { name: "material-confidence", value: 0.6, threshold: 0.5, passed: true },
+      { name: "physics-verdict", value: 1, threshold: 1, passed: true },
+    ],
+    reasons: [],
+    at: "2026-08-29T04:21:00.000Z",
+  },
+};
+
+describe("AgentJob decision half", () => {
+  it("accepts a job carrying every record the section 7 loop produces", () => {
+    expect(assertJob(reported)).toEqual(reported);
+  });
+
+  it("accepts an escalation that names why it refused to report", () => {
+    const escalated: AgentJob = {
+      ...reported,
+      state: "awaiting_verification",
+      gate: {
+        ...reported.gate!,
+        observed: 0.22,
+        decision: "escalate",
+        inputs: [
+          { name: "reconstruction-confidence", value: 0.22, threshold: 0.7, passed: false },
+          { name: "material-confidence", value: 0.6, threshold: 0.5, passed: true },
+          { name: "physics-verdict", value: 1, threshold: 1, passed: true },
+        ],
+        reasons: ["low-reconstruction-confidence"],
+      },
+    };
+    expect(assertJob(escalated)).toEqual(escalated);
+  });
+
+  it("declares exactly the four physics tests the agent may choose between", () => {
+    expect(agentJobSchema.definitions.testKind.enum).toEqual(["tip", "load", "drop", "none"]);
+  });
+
+  it("carries physics-test-unsupported, so an unimplemented test is a stated reason", () => {
+    // packages/scene does not implement load. Without this the gate would have to
+    // report a stable that means nothing, or lie about why it escalated.
+    expect(agentJobSchema.definitions.gateReason.enum).toEqual([
+      "low-reconstruction-confidence",
+      "low-material-confidence",
+      "physics-inconclusive",
+      "physics-test-unsupported",
+    ]);
+  });
+
+  it("pins the policy name, so changing WHAT is compared cannot pass silently", () => {
+    expect(agentJobSchema.definitions.gateRecord.properties.policy.enum).toEqual([
+      "min-confidence-v1",
+    ]);
+  });
+
+  it("requires the gate to record the inputs it compared, not just the verdict", () => {
+    const { inputs, ...withoutInputs } = reported.gate!;
+    expect(inputs).toHaveLength(3);
+    expect(() => assertJob({ ...reported, gate: withoutInputs })).toThrow(ContractViolationError);
+  });
+
+  it("rejects a test kind the selection agent invented", () => {
+    expect(() =>
+      assertJob({ ...reported, selection: { ...reported.selection!, kind: "shake" } }),
+    ).toThrow(ContractViolationError);
+  });
+
+  it("rejects a mesh uri that is not a gs:// object", () => {
+    expect(() =>
+      assertJob({
+        ...reported,
+        reconstruction: { ...reported.reconstruction!, meshUri: "https://example.com/mesh.glb" },
+      }),
+    ).toThrow(ContractViolationError);
+  });
+
+  it("rejects a gate decision outside report and escalate", () => {
+    expect(() =>
+      assertJob({ ...reported, gate: { ...reported.gate!, decision: "retry" } }),
+    ).toThrow(ContractViolationError);
+  });
+
+  it("keeps the load-test notice in the closed set the gate reads", () => {
+    expect(agentJobSchema.definitions.noticeCode.enum).toContain("load-test-not-implemented");
+    const noticed: AgentJob = {
+      ...reported,
+      simulation: { ...reported.simulation!, notices: ["load-test-not-implemented"] },
+    };
+    expect(assertJob(noticed)).toEqual(noticed);
+  });
+
+  it("rejects a notice code no engine emits", () => {
+    expect(() =>
+      assertJob({
+        ...reported,
+        simulation: { ...reported.simulation!, notices: ["exploded"] },
+      }),
+    ).toThrow(ContractViolationError);
+  });
+});

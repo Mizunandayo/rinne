@@ -372,16 +372,25 @@ if (-not $agentToken) {
         Test-Assert -Name "agent reports a Gemini model, not the stub triager" `
             -Condition ((Get-Prop $triage 'detail' '') -like 'gemini-*') `
             -Detail "got '$(Get-Prop $triage 'detail' '?')'"
+
+        $loop = ($body.dependencies | Where-Object { $_.name -eq 'decision-loop' })
+        Test-Assert -Name "agent calls the REAL reconstruction and physics services" `
+            -Condition ((Get-Prop $loop 'detail' '') -like 'http *') `
+            -Detail "got '$(Get-Prop $loop 'detail' '?')'"
+        Test-Assert -Name "agent reports the gate thresholds it will escalate on" `
+            -Condition ((Get-Prop $loop 'detail' '') -like '*gate 0.*') `
+            -Detail "readyz did not name the declared policy numbers"
         Write-Ok "agent: store=$(Get-Prop $store 'detail' '?') triage=$(Get-Prop $triage 'detail' '?')"
+        Write-Ok "loop:  $(Get-Prop $loop 'detail' '?')"
     } catch {
         Test-Assert -Name "rinne-agent answers an authenticated /readyz" `
             -Condition $false -Detail "HTTP $(Get-HttpStatus $_) - $($_.Exception.Message)"
     }
 }
 
-# 9f. The Day 4 milestone, end to end
+# 9f. The Day 5 milestone: one upload, the whole section 7 loop
 if ($IncludeAgentLoop) {
-    Write-Step "9f. Drop an image in the bucket, read the decision back"
+    Write-Step "9f. Drop an image in the bucket, read the whole decision back"
 
     if (-not $ScanImage -or -not (Test-Path $ScanImage)) {
         Test-Assert -Name "a scan image was supplied" -Condition $false `
@@ -412,14 +421,21 @@ if ($IncludeAgentLoop) {
         $jobId = "scan-" + $hex.Substring(0, 16)
         Write-Ok "expecting job $jobId"
 
+        # The document appears in queued within a second, so polling for its mere
+        # existence proves nothing. Wait for a state the loop cannot leave.
+        $settled = @('skipped_low_risk','awaiting_verification','reporting','done','failed')
         $agentToken = Get-IdToken -Audience $agentUrl
         $job = $null
-        foreach ($attempt in 1..30) {
-            Start-Sleep -Seconds 3
+        foreach ($attempt in 1..45) {
+            Start-Sleep -Seconds 10
             try {
                 $r = Invoke-WebRequest -Uri "$agentUrl/v1/jobs/$jobId" -TimeoutSec 30 `
                     -UseBasicParsing -Headers @{ Authorization = "Bearer $agentToken" }
-                if ($r.StatusCode -eq 200) { $job = $r.Content | ConvertFrom-Json; break }
+                if ($r.StatusCode -eq 200) {
+                    $job = $r.Content | ConvertFrom-Json
+                    if ($settled -contains (Get-Prop $job 'state' '')) { break }
+                    Write-Host "    $(Get-Prop $job 'state' '?') ..." -ForegroundColor DarkCyan
+                }
             } catch {
                 $null = Get-HttpStatus $_
             }
@@ -428,28 +444,65 @@ if ($IncludeAgentLoop) {
         if ($null -eq $job) {
             Test-Assert -Name "the agent wrote a job document for the uploaded scan" `
                 -Condition $false `
-                -Detail "no document after 90s. Check the trigger, the GCS service agent's pubsub.publisher binding, and the agent logs."
+                -Detail "no document after 450s. Check the trigger, the GCS service agent's pubsub.publisher binding, and the agent logs."
         } else {
             $state = Get-Prop $job 'state' ''
-            Test-Assert -Name "the job reached a triage decision" `
-                -Condition ($state -eq 'triaged' -or $state -eq 'skipped_low_risk') `
+            Test-Assert -Name "the job reached a state the loop cannot leave" `
+                -Condition ($settled -contains $state) `
                 -Detail "state='$state' error='$(Get-Prop (Get-Prop $job 'error' $null) 'rule' '-')'"
 
             $triageRec = Get-Prop $job 'triage' $null
             Test-Assert -Name "the decision names the model that made it" `
                 -Condition ((Get-Prop $triageRec 'model' '') -like 'gemini-*') `
                 -Detail "got '$(Get-Prop $triageRec 'model' '?')'"
-            Test-Assert -Name "the decision chain is logged in order" `
-                -Condition (@(Get-Prop $job 'decisions' @()).Count -ge 2) `
-                -Detail "expected at least ingest and triage entries"
 
             Write-Ok "state: $state"
             Write-Ok "shape: $(Get-Prop $triageRec 'shape' '?')  confidence: $(Get-Prop $triageRec 'confidence' '?')  latency: $(Get-Prop $triageRec 'latencyMs' '?')ms"
             Write-Ok "reason: $(Get-Prop $triageRec 'rationale' '?')"
+
+            if ($state -eq 'skipped_low_risk') {
+                Write-Ok "Flash saw no physics risk, so the decision half never ran. That is a pass."
+            } else {
+                $sel   = Get-Prop $job 'selection' $null
+                $recon = Get-Prop $job 'reconstruction' $null
+                $sim   = Get-Prop $job 'simulation' $null
+                $gate  = Get-Prop $job 'gate' $null
+                $wanted = if ($state -eq 'reporting') { 'report' } else { 'escalate' }
+
+                Test-Assert -Name "the agent chose a physics test and said why" `
+                    -Condition ([bool](Get-Prop $sel 'kind' '')) `
+                    -Detail "no selection record on the job"
+                Test-Assert -Name "reconstruction ran and returned a mesh in the artifacts bucket" `
+                    -Condition ((Get-Prop $recon 'meshUri' '') -like "gs://rinne-artifacts-$ProjectId/*") `
+                    -Detail "got '$(Get-Prop $recon 'meshUri' '?')'"
+                Test-Assert -Name "physics ran and returned a verdict" `
+                    -Condition ([bool](Get-Prop $sim 'verdict' '')) `
+                    -Detail "no simulation record on the job"
+                Test-Assert -Name "the gate named the policy it applied" `
+                    -Condition ((Get-Prop $gate 'policy' '') -eq 'min-confidence-v1') `
+                    -Detail "got '$(Get-Prop $gate 'policy' '?')'"
+                Test-Assert -Name "the gate recorded every input it compared" `
+                    -Condition (@(Get-Prop $gate 'inputs' @()).Count -ge 3) `
+                    -Detail "an escalation has to be auditable from the document alone"
+                Test-Assert -Name "the decision chain runs ingest to gate" `
+                    -Condition (@(Get-Prop $job 'decisions' @()).Count -ge 4) `
+                    -Detail "expected ingest, triage and two gate entries"
+                Test-Assert -Name "the state matches what the gate decided" `
+                    -Condition ((Get-Prop $gate 'decision' '') -eq $wanted) `
+                    -Detail "gate said '$(Get-Prop $gate 'decision' '?')' but the job is '$state'"
+
+                Write-Ok "test:  $(Get-Prop $sel 'kind' '?')  ($(Get-Prop $sel 'rationale' '?'))"
+                Write-Ok "mesh:  $(Get-Prop $recon 'meshUri' '?')"
+                Write-Ok "recon: confidence $(Get-Prop $recon 'confidence' '?') ($(Get-Prop $recon 'band' '?'))  material $(Get-Prop $recon 'material' '?') $(Get-Prop $recon 'materialConfidence' '?')"
+                Write-Ok "sim:   $(Get-Prop $sim 'verdict' '?')  tilt $(Get-Prop $sim 'tiltDegrees' '?')deg  drift $(Get-Prop $sim 'driftMeters' '?')m"
+                Write-Ok "gate:  $(Get-Prop $gate 'decision' '?')  observed $(Get-Prop $gate 'observed' '?') vs threshold $(Get-Prop $gate 'threshold' '?')"
+                $reasons = @(Get-Prop $gate 'reasons' @())
+                if ($reasons.Count -gt 0) { Write-Ok "why:   $($reasons -join ', ')" }
+            }
         }
     }
 } else {
-    Write-Ok "Agent loop skipped. Re-run with -IncludeAgentLoop -ScanImage <path> for the Day 4 milestone."
+    Write-Ok "Agent loop skipped. Re-run with -IncludeAgentLoop -ScanImage <path> for the Day 5 milestone."
 }
 
 if ($IncludeGpu) {

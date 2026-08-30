@@ -7,6 +7,7 @@ import pytest
 from rinne_agent.contracts import AgentJob
 from rinne_agent.contracts.agent_job import JobActor, JobState
 from rinne_agent.gcp.firestore import (
+    _FIELD_PATHS,
     MemoryJobStore,
     PreconditionFailedError,
     decode_fields,
@@ -139,3 +140,15 @@ class TestMemoryStore:
     async def test_save_refuses_a_document_that_does_not_exist(self) -> None:
         with pytest.raises(PreconditionFailedError):
             await MemoryJobStore().save(job(), expected="whatever")
+
+
+def test_the_write_mask_covers_every_field_the_contract_declares() -> None:
+    """A PATCH applies only what the mask names. A field the contract has and the
+    mask does not is accepted, dropped, and reported as a successful write."""
+    declared = {field.alias or name for name, field in AgentJob.model_fields.items()}
+    assert set(_FIELD_PATHS) == declared
+
+
+def test_the_mask_names_the_day_5_records_specifically() -> None:
+    for path in ("selection", "reconstruction", "simulation", "gate"):
+        assert path in _FIELD_PATHS

@@ -79,12 +79,16 @@ def evaluate(
     elif inconclusive:
         reasons.append(GateReason.physics_inconclusive)
 
+    # The binding input is the one with the least room to spare, and observed and
+    # threshold are BOTH read off it. Pairing the lowest value with some other
+    # input's threshold reads as a policy the gate ignored.
+    binding = min(inputs, key=lambda item: item.value - item.threshold)
+
     return GateRecord.model_validate(
         {
             "policy": Policy.min_confidence_v1,
-            "threshold": thresholds.reconstruction_confidence,
-            # The binding input: the lowest value seen is the number that decided it.
-            "observed": min(item.value for item in inputs),
+            "threshold": binding.threshold,
+            "observed": binding.value,
             "calibrated": reconstruction.calibrated,
             "decision": Decision.escalate if reasons else Decision.report,
             "inputs": inputs,

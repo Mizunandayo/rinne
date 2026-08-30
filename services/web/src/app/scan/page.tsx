@@ -36,14 +36,16 @@ export default function ScanPage() {
     setError("");
   }, []);
 
-  const submit = useCallback(async (file: File) => {
+  const submit = useCallback(async (files: readonly File[]) => {
+    if (files.length === 0) return;
     setPhase("working");
     setError("");
 
     const requestId = newRequestId();
     const form = new FormData();
     form.append("request", JSON.stringify({ schemaVersion: 1, requestId }));
-    form.append("images", file, file.name);
+    // imageAccounting reports how many the pipeline actually consumed.
+    for (const file of files) form.append("images", file, file.name);
 
     try {
       const response = await fetch("/api/reconstruct", { method: "POST", body: form });
@@ -82,7 +84,7 @@ export default function ScanPage() {
         </Link>
       </header>
 
-      {phase === "idle" ? <CameraCapture onCapture={(file) => void submit(file)} /> : null}
+      {phase === "idle" ? <CameraCapture onSubmit={(files) => void submit(files)} /> : null}
 
       {phase === "working" ? (
         <section className="rinne-scan-working rinne-enter">

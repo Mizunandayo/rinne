@@ -22,7 +22,13 @@ class Reconstructor(Protocol):
     """Two implementations: the live GPU service, and an offline double."""
 
     async def reconstruct(
-        self, *, request_id: str, image: bytes, mime_type: str
+        self,
+        *,
+        request_id: str,
+        image: bytes,
+        mime_type: str,
+        longest_dimension_meters: float | None = None,
+        label: str | None = None,
     ) -> tuple[ReconstructionResult, int]: ...
 
 
@@ -35,10 +41,23 @@ class HttpReconstructor:
         self._timeout_seconds = timeout_seconds
 
     async def reconstruct(
-        self, *, request_id: str, image: bytes, mime_type: str
+        self,
+        *,
+        request_id: str,
+        image: bytes,
+        mime_type: str,
+        longest_dimension_meters: float | None = None,
+        label: str | None = None,
     ) -> tuple[ReconstructionResult, int]:
         started = time.perf_counter()
-        document = json.dumps({"schemaVersion": 1, "requestId": request_id})
+        # Omitted rather than sent empty: the service falls back to its own default,
+        # and a null would be a claim that the size is unknown when it simply is not set.
+        request: dict[str, object] = {"schemaVersion": 1, "requestId": request_id}
+        if longest_dimension_meters is not None:
+            request["assumedLongestDimensionMeters"] = longest_dimension_meters
+        if label:
+            request["label"] = label[:64]
+        document = json.dumps(request)
 
         async with httpx2.AsyncClient(timeout=self._timeout_seconds) as client:
             try:
@@ -98,9 +117,15 @@ class StubReconstructor:
         self._material_confidence = material_confidence
 
     async def reconstruct(
-        self, *, request_id: str, image: bytes, mime_type: str
+        self,
+        *,
+        request_id: str,
+        image: bytes,
+        mime_type: str,
+        longest_dimension_meters: float | None = None,
+        label: str | None = None,
     ) -> tuple[ReconstructionResult, int]:
-        del image, mime_type
+        del image, mime_type, longest_dimension_meters, label
         weights = {"fieldDecisiveness": 0.45, "watertightness": 0.30, "volumePlausibility": 0.10}
         return (
             ReconstructionResult.model_validate(

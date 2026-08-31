@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     triage_model: str = Field(default="gemini-3.5-flash", min_length=1, max_length=64)
     triage_temperature: float = Field(default=0.0, ge=0, le=2)
     triage_max_output_tokens: int = Field(default=512, ge=64, le=8192)
+    selection_max_output_tokens: int = Field(default=1024, ge=64, le=8192)
 
     triage_thinking_budget: int = Field(default=0, ge=0, le=24576)
     triage_timeout_seconds: float = Field(default=60.0, gt=0, le=300)

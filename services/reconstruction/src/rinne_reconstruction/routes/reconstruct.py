@@ -212,6 +212,10 @@ def _compute(
         raw.faces,
         vertex_colors=raw.vertex_colors,
         longest_dimension_meters=longest_dimension_meters,
+        smoothing_iterations=settings.mesh_smoothing_iterations,
+        target_faces=settings.mesh_target_faces,
+        uv=raw.uv,
+        texture=raw.texture,
     )
     measurements = measure(normalised)
     glb = export_glb(normalised)

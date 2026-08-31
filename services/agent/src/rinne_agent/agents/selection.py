@@ -22,17 +22,30 @@ SELECTION_INSTRUCTION: Final = (
     "none - nothing here is worth simulating.\n"
     "\n"
     "confidence is your certainty in THIS choice. rationale is one or two plain "
-    "sentences naming the geometry you chose from. Never use emojis. Do not "
-    "estimate mass, force or dimensions; the service measures those."
+    "sentences naming the geometry you chose from.\n"
+    "\n"
+    "label names the object in two or three words.\n"
+    "longest_dimension_meters is its longest side in METRES, from everyday "
+    "knowledge of what the object is. Nothing downstream can recover scale from "
+    "a single photograph, so this number decides the object's size, its mass and "
+    "every force applied to it. A charger adapter is about 0.07, a mug 0.12, a "
+    "wine bottle 0.30, a laptop 0.35, a dining chair 0.9. Never use emojis. Do "
+    "not estimate mass or force; those are derived from this number."
 )
 
 
 class SelectionOutput(BaseModel):
-    """What the model returns. Forces and heights are the service's job, not its."""
+    """What the model returns. Forces stay derived; scale cannot be, so it is asked for."""
 
     kind: Literal["tip", "load", "drop", "none"] = Field(description="The single test to run.")
     confidence: float = Field(ge=0.0, le=1.0, description="Certainty in this choice.")
     rationale: str = Field(description="One or two sentences. No emojis.")
+    # Only ge/le here: gt emits exclusiveMinimum, and Gemini's Schema type rejects
+    # any key it does not know, which fails the whole call rather than the field.
+    label: str = Field(description="The object, in a few words.")
+    longest_dimension_meters: float = Field(
+        ge=0.01, le=5.0, description="Longest side in metres, from what the object is."
+    )
 
 
 def build_selection_agent(

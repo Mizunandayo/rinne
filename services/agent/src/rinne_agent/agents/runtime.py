@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from google.adk.sessions import BaseSessionService, InMemorySessionService
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
+from rinne_agent.agents.identify import IdentifyOutput
 from rinne_agent.agents.selection import SelectionOutput
 from rinne_agent.agents.triage import TriageOutput, strip_emojis
 from rinne_agent.contracts.agent_job import JobActor
@@ -64,6 +66,13 @@ class AdkInvoker:
             raise RuleError(
                 "the model did not answer in time", retryable=True, actor=self._actor
             ) from exc
+        except RuleError:
+            raise
+        # Deliberately broad. ADK raises its own wrapper types, and anything that
+        # escapes here is a 500 that records nothing and strands the job in place.
+        except Exception as exc:
+            logger.exception("the model call failed", extra={"jobId": job_id})
+            raise RuleError("the model call failed", retryable=True, actor=self._actor) from exc
         return Invocation(
             raw=raw,
             latency_ms=int((time.perf_counter() - started) * 1000),
@@ -209,6 +218,8 @@ class StubSelector:
                     "kind": self._kind,
                     "confidence": 0.5,
                     "rationale": "Stub selection. No model was called.",
+                    "label": "stub object",
+                    "longest_dimension_meters": 0.3,
                 }
             ),
             model=self.model,
@@ -310,6 +321,83 @@ def build_selector(
             session_service=InMemorySessionService(),
             app_name=app_name,
             state_key="selection",
+            timeout_seconds=timeout_seconds,
+            actor=JobActor.gate,
+        ),
+        model=model,
+    )
+
+
+@dataclass(frozen=True)
+class IdentifyOutcome:
+    """What the viewer route returns. Not persisted: nothing here reaches a job."""
+
+    output: IdentifyOutput
+    model: str
+    latency_ms: int
+
+
+class Identifier(Protocol):
+    async def identify(self, *, image: bytes, mime_type: str) -> IdentifyOutcome: ...
+
+
+class StubIdentifier:
+    """The test path, same rule: chosen by configuration, never as a fallback."""
+
+    async def identify(self, *, image: bytes, mime_type: str) -> IdentifyOutcome:
+        del image, mime_type
+        return IdentifyOutcome(
+            output=IdentifyOutput.model_validate(
+                {
+                    "label": "stub object",
+                    "longest_dimension_meters": 0.3,
+                    "material": "unknown",
+                    "primary": "tip",
+                    "rationale": "Stub identification. No model was called.",
+                }
+            ),
+            model="stub-identify",
+            latency_ms=0,
+        )
+
+
+class FlashIdentifier:
+    def __init__(self, *, invoker: AdkInvoker, model: str) -> None:
+        self._invoker = invoker
+        self._model = model
+
+    async def identify(self, *, image: bytes, mime_type: str) -> IdentifyOutcome:
+        # No job id: this is a viewer asking about a mesh, so the session is keyed
+        # on the image itself rather than on a decision that does not exist.
+        key = hashlib.sha256(image).hexdigest()[:16]
+        call = await self._invoker.invoke(
+            job_id=f"view-{key}",
+            parts=[
+                types.Part.from_bytes(data=image, mime_type=mime_type),
+                types.Part.from_text(text="Identify this object and choose its test."),
+            ],
+        )
+        output = _validate(IdentifyOutput, call.raw, JobActor.gate)
+        return IdentifyOutcome(
+            output=output.model_copy(update={"rationale": _clean(output.rationale)}),
+            model=self._model,
+            latency_ms=call.latency_ms,
+        )
+
+
+def build_identifier(
+    *, mode: str, agent: LlmAgent | None, app_name: str, model: str, timeout_seconds: float
+) -> Identifier:
+    if mode == "stub":
+        return StubIdentifier()
+    if agent is None:
+        raise RuntimeError("triage_mode=flash requires an agent")
+    return FlashIdentifier(
+        invoker=AdkInvoker(
+            agent=agent,
+            session_service=InMemorySessionService(),
+            app_name=app_name,
+            state_key="identify",
             timeout_seconds=timeout_seconds,
             actor=JobActor.gate,
         ),

@@ -67,6 +67,8 @@ class Decider:
                 "latencyMs": chosen.latency_ms,
                 "promptTokens": chosen.prompt_tokens,
                 "responseTokens": chosen.response_tokens,
+                "label": chosen.output.label,
+                "longestDimensionMeters": chosen.output.longest_dimension_meters,
             }
         )
 
@@ -74,14 +76,22 @@ class Decider:
             job,
             target=JobState.simulating,
             actor=JobActor.gate,
-            summary=f"Selected the {selection.kind.value} test. {selection.rationale}",
+            summary=(
+                f"Selected the {selection.kind.value} test for a "
+                f"{selection.label} at {selection.longest_dimension_meters:.2f} m. "
+                f"{selection.rationale}"
+            ),
             model=chosen.model,
             confidence=selection.confidence,
             latency_ms=selection.latency_ms,
         ).model_copy(update={"selection": selection})
 
         result, recon_ms = await self.reconstructor.reconstruct(
-            request_id=job.job_id, image=image, mime_type=mime_type
+            request_id=job.job_id,
+            image=image,
+            mime_type=mime_type,
+            longest_dimension_meters=selection.longest_dimension_meters,
+            label=selection.label,
         )
         reconstruction = _reconstruction_record(result, recon_ms)
 

@@ -10,7 +10,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from rinne_agent.agents.runtime import Selector, Triager, build_selector, build_triager
+from rinne_agent.agents.identify import build_identify_agent
+from rinne_agent.agents.runtime import (
+    Identifier,
+    Selector,
+    Triager,
+    build_identifier,
+    build_selector,
+    build_triager,
+)
 from rinne_agent.agents.selection import build_selection_agent
 from rinne_agent.agents.triage import build_triage_agent
 from rinne_agent.clients.physics import build_simulator
@@ -29,7 +37,7 @@ from rinne_agent.middleware import (
     SecurityHeadersMiddleware,
 )
 from rinne_agent.pipeline import Pipeline
-from rinne_agent.routes import events, health, jobs
+from rinne_agent.routes import events, health, identify, jobs
 from rinne_agent.scene import SolverSettings
 
 logger = logging.getLogger(__name__)
@@ -56,7 +64,7 @@ def build_triage(settings: Settings) -> Triager:
         build_triage_agent(
             model=settings.triage_model,
             temperature=settings.triage_temperature,
-            max_output_tokens=settings.triage_max_output_tokens,
+            max_output_tokens=settings.selection_max_output_tokens,
             thinking_budget=settings.triage_thinking_budget,
         )
         if settings.triage_mode == "flash"
@@ -85,6 +93,29 @@ def build_selection(settings: Settings) -> Selector:
         else None
     )
     return build_selector(
+        mode=settings.triage_mode,
+        agent=agent,
+        app_name="rinne-agent",
+        model=settings.triage_model,
+        timeout_seconds=settings.triage_timeout_seconds,
+    )
+
+
+def build_identify(settings: Settings) -> Identifier:
+    """Same model and the same thinking budget as triage; a different question."""
+    if settings.triage_mode == "flash":
+        configure_vertex(settings)
+    agent = (
+        build_identify_agent(
+            model=settings.triage_model,
+            temperature=settings.triage_temperature,
+            max_output_tokens=settings.selection_max_output_tokens,
+            thinking_budget=settings.triage_thinking_budget,
+        )
+        if settings.triage_mode == "flash"
+        else None
+    )
+    return build_identifier(
         mode=settings.triage_mode,
         agent=agent,
         app_name="rinne-agent",
@@ -141,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.store = store
         app.state.triager = triager
         app.state.selector = selector
+        app.state.identifier = build_identify(resolved)
         app.state.decider = Decider(
             selector=selector,
             reconstructor=build_reconstructor(
@@ -207,6 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(events.router)
     app.include_router(jobs.router)
+    app.include_router(identify.router)
 
     @app.exception_handler(RuleError)
     async def rule_error_handler(_request: Request, exc: RuleError) -> JSONResponse:

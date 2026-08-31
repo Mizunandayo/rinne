@@ -27,6 +27,7 @@ from typing import Final
 import numpy as np
 import trimesh
 from numpy.typing import NDArray
+from PIL import Image
 
 #: Below this, a "mesh" is noise. Kept here rather than in config because it is
 #: a property of the export format, not an operational choice.
@@ -59,19 +60,36 @@ def normalise(
     *,
     vertex_colors: NDArray[np.uint8] | None,
     longest_dimension_meters: float,
+    smoothing_iterations: int = 0,
+    target_faces: int = 0,
+    uv: NDArray[np.float32] | None = None,
+    texture: Image.Image | None = None,
 ) -> trimesh.Trimesh:
     """Turn a raw marching-cubes surface into a metre-scaled, Y-up, seated mesh."""
     if faces.shape[0] < _MIN_EXPORTABLE_FACES:
         raise MeshNormalisationError("reconstruction produced no usable surface")
 
+    textured = uv is not None and texture is not None
     mesh = trimesh.Trimesh(
         vertices=np.asarray(vertices, dtype=np.float64),
         faces=np.asarray(faces, dtype=np.int64),
-        vertex_colors=vertex_colors,
-        process=True,
+        vertex_colors=None if textured else vertex_colors,
+        # An atlas is indexed by vertex, so welding or reordering would break it.
+        process=not textured,
     )
-    mesh.remove_unreferenced_vertices()
+    if textured:
+        mesh.visual = trimesh.visual.TextureVisuals(
+            uv=np.asarray(uv, dtype=np.float64),
+            material=trimesh.visual.material.PBRMaterial(
+                baseColorTexture=texture, metallicFactor=0.0, roughnessFactor=0.65
+            ),
+        )
+    else:
+        mesh.remove_unreferenced_vertices()
+        mesh = _decimate(mesh, target_faces)
+
     trimesh.repair.fix_normals(mesh)
+    _smooth(mesh, smoothing_iterations)
 
     if mesh.faces.shape[0] < _MIN_EXPORTABLE_FACES:
         raise MeshNormalisationError("reconstruction produced no usable surface")
@@ -89,6 +107,50 @@ def normalise(
     # Scaling is about the origin, so the ground contact moved. Seat again.
     _seat(mesh)
     return mesh
+
+
+def _decimate(mesh: trimesh.Trimesh, target_faces: int) -> trimesh.Trimesh:
+    """Before smoothing, so the smoother works on the surface that ships. Quadric
+    decimation keeps silhouette over interior detail, which is the right trade for
+    a surface whose interior detail is mostly the isosurface's own quantisation.
+
+    It also DISCARDS vertex colour - it returns a uniform white mesh - so the
+    colour is resampled from the original surface by nearest vertex. Without this
+    the reconstruction renders as featureless plaster.
+    """
+    if target_faces <= 0 or mesh.faces.shape[0] <= target_faces:
+        return mesh
+
+    reduced = mesh.simplify_quadric_decimation(face_count=target_faces)
+    if reduced.faces.shape[0] < _MIN_EXPORTABLE_FACES:
+        return mesh
+
+    source = _vertex_colors_of(mesh)
+    if source is not None:
+        _, nearest = trimesh.proximity.ProximityQuery(mesh).vertex(reduced.vertices)
+        reduced.visual.vertex_colors = source[np.asarray(nearest, dtype=np.int64)]
+    return reduced
+
+
+def _vertex_colors_of(mesh: trimesh.Trimesh) -> NDArray[np.uint8] | None:
+    """None when the pipeline produced no colour, rather than an invented default."""
+    visual = getattr(mesh, "visual", None)
+    colors = getattr(visual, "vertex_colors", None)
+    if colors is None:
+        return None
+    array = np.asarray(colors, dtype=np.uint8)
+    return array if array.ndim == 2 and array.shape[0] == mesh.vertices.shape[0] else None
+
+
+def _smooth(mesh: trimesh.Trimesh, iterations: int) -> None:
+    """Marching cubes returns the isosurface's own quantisation as surface detail.
+    Taubin rather than Laplacian: the alternating positive and negative pass
+    cancels the shrinkage that would otherwise eat the volume, and the mass with it."""
+    if iterations <= 0:
+        return
+    trimesh.smoothing.filter_taubin(mesh, lamb=0.5, nu=0.53, iterations=iterations)
+    if not np.isfinite(mesh.vertices).all():
+        raise MeshNormalisationError("smoothing produced a degenerate surface")
 
 
 def _seat(mesh: trimesh.Trimesh) -> None:

@@ -1,7 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RefreshCw, Trash2, Upload, Wand2 } from "lucide-react";
+
+import { EdgeTrace, RETICLE, type LockBox, type TraceReading } from "./EdgeTrace";
+import {
+  Camera,
+  Crosshair,
+  Maximize,
+  Minimize,
+  RefreshCw,
+  Trash2,
+  Unlock,
+  Upload,
+  Wand2,
+} from "lucide-react";
 import { Button } from "./Button";
 
 const CAPTURE_EDGE = 1536;
@@ -10,6 +22,14 @@ const JPEG_QUALITY = 0.92;
 const MAX_SHOTS = 4;
 
 // Guidance only. No pose is recovered, so nothing downstream cares which is which.
+// Coverage is the share of the reticle carrying real edges. Too little and there
+// is no object in the frame worth reconstructing; a bit more and it is too far away.
+// Room around a locked object, so the reconstruction sees its silhouette
+// against background rather than cropped flush to its own edge.
+const LOCK_PADDING = 0.35;
+const NO_OBJECT = 0.03;
+const TOO_FAR = 0.1;
+
 const VIEWS = ["Front", "Left side", "Back", "Right side"] as const;
 
 type Phase = "starting" | "live" | "denied" | "unsupported";
@@ -28,6 +48,12 @@ interface CameraCaptureProps {
 export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [reading, setReading] = useState<TraceReading>({ coverage: 1, lock: null });
+  const [locking, setLocking] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const lockRef = useRef<LockBox | null>(null);
+  lockRef.current = reading.lock;
   const [phase, setPhase] = useState<Phase>("starting");
   const [mirrored, setMirrored] = useState(false);
   const [shots, setShots] = useState<readonly Shot[]>([]);
@@ -88,6 +114,19 @@ export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps
     );
   }, []);
 
+  const toggleFull = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stage.requestFullscreen().catch(() => setExpanded(false));
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setExpanded(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
   const remove = useCallback((index: number) => {
     setShots((current) => current.filter((_, position) => position !== index));
   }, []);
@@ -96,17 +135,35 @@ export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
 
-    // Bounded here too: a 4K frame the service downscales anyway wastes the upload.
-    const scale = Math.min(1, CAPTURE_EDGE / Math.max(video.videoWidth, video.videoHeight));
-    const width = Math.round(video.videoWidth * scale);
-    const height = Math.round(video.videoHeight * scale);
+    // A lock is a manual segmentation hint, so honour it: crop to the object the
+    // operator pointed at, padded, and fall back to the reticle when nothing is
+    // locked. Either way the whole frame never goes up, because a face behind the
+    // object is as salient to u2netp as the object itself.
+    const held = lockRef.current;
+    let side: number;
+    let sx: number;
+    let sy: number;
+    if (held) {
+      const w = held.width * video.videoWidth;
+      const h = held.height * video.videoHeight;
+      side = Math.min(video.videoWidth, video.videoHeight, Math.max(w, h) * (1 + LOCK_PADDING));
+      sx = (held.x + held.width / 2) * video.videoWidth - side / 2;
+      sy = (held.y + held.height / 2) * video.videoHeight - side / 2;
+      sx = Math.max(0, Math.min(video.videoWidth - side, sx));
+      sy = Math.max(0, Math.min(video.videoHeight - side, sy));
+    } else {
+      side = Math.min(video.videoWidth, video.videoHeight) * RETICLE;
+      sx = (video.videoWidth - side) / 2;
+      sy = (video.videoHeight - side) / 2;
+    }
+    const edge = Math.min(CAPTURE_EDGE, Math.round(side));
 
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = edge;
+    canvas.height = edge;
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.drawImage(video, 0, 0, width, height);
+    context.drawImage(video, sx, sy, side, side, 0, 0, edge, edge);
 
     canvas.toBlob(
       (blob) => {
@@ -130,13 +187,20 @@ export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps
 
   return (
     <div className="rinne-capture">
-      <div className="rinne-capture-stage">
+      <div className="rinne-capture-stage" ref={stageRef} data-full={expanded}>
         <video
           ref={videoRef}
           playsInline
           muted
           className="rinne-capture-video"
           data-mirrored={mirrored}
+        />
+        <EdgeTrace
+          videoRef={videoRef}
+          active={phase === "live"}
+          mirrored={mirrored}
+          locking={locking}
+          onReading={setReading}
         />
         {phase !== "live" ? (
           <p className="rinne-capture-overlay">
@@ -148,8 +212,18 @@ export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps
           </p>
         ) : null}
         {phase === "live" && !full ? (
-          <p className="rinne-capture-cue">
-            {shots.length === 0 ? "Photograph the front" : `Now turn it: ${next.toLowerCase()}`}
+          <p className="rinne-capture-cue" data-weak={reading.coverage < TOO_FAR}>
+            {reading.lock
+              ? "Locked. Only this object is scanned."
+              : locking
+                ? "Tap the object to lock it."
+                : reading.coverage < NO_OBJECT
+                  ? "Nothing in the frame. More light, or a plainer background."
+                  : reading.coverage < TOO_FAR
+                    ? "Fill the corners with the object. Only what is inside them is scanned."
+                    : shots.length === 0
+                      ? "Photograph the front"
+                      : `Now turn it: ${next.toLowerCase()}`}
           </p>
         ) : null}
       </div>
@@ -197,6 +271,24 @@ export function CameraCapture({ onSubmit, disabled = false }: CameraCaptureProps
           disabled={disabled || shots.length === 0}
         >
           Reconstruct
+        </Button>
+
+        <Button
+          variant="secondary"
+          icon={reading.lock ? Unlock : Crosshair}
+          onClick={() => setLocking((on) => !on)}
+          disabled={phase !== "live"}
+        >
+          {reading.lock ? "Unlock" : locking ? "Cancel lock" : "Lock object"}
+        </Button>
+
+        <Button
+          variant="secondary"
+          icon={expanded ? Minimize : Maximize}
+          onClick={toggleFull}
+          disabled={phase !== "live"}
+        >
+          {expanded ? "Exit full screen" : "Full screen"}
         </Button>
 
         {phase === "denied" ? (

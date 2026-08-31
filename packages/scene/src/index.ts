@@ -17,4 +17,4 @@ export {
   type Extent,
   type Quaternion,
 } from "./world.js";
-export { simulateScene, digestOf, type SimulateOptions } from "./simulate.js";
+export { simulateScene, digestOf, type Pose, type SimulateOptions } from "./simulate.js";

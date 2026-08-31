@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     min_faces: int = Field(default=100, ge=0, le=100_000)
 
     # Pipeline
-    pipeline_name: Literal["stub", "triposr"] = "stub"
+    pipeline_name: Literal["stub", "triposr", "instantmesh"] = "stub"
     stub_resolution: int = Field(default=64, ge=16, le=192)
 
     # Baked into the image by the Dockerfile's source and weights stages.
@@ -85,6 +85,25 @@ class Settings(BaseSettings):
     triposr_marching_cubes_resolution: int = Field(default=256, ge=32, le=512)
     triposr_chunk_size: int = Field(default=8192, ge=0, le=1_048_576)
     triposr_foreground_ratio: float = Field(default=0.85, gt=0, le=1)
+    # 0 disables. Taubin preserves volume, so this does not move the mass.
+    mesh_smoothing_iterations: int = Field(default=12, ge=0, le=60)
+    # 0 disables. A browser downloads this mesh, and the physics service
+    # reduces it to a convex hull regardless.
+    mesh_target_faces: int = Field(default=80_000, ge=0, le=2_000_000)
+
+    # InstantMesh. Baked by the Dockerfile like TripoSR's, and read not set.
+    # Every step of the diffusion stage is GPU seconds, so it is tunable
+    # without a rebuild; upstream defaults to 75.
+    instantmesh_source_dir: str = "/opt/instantmesh/src"
+    instantmesh_weights_dir: str = "/opt/instantmesh/weights"
+    zero123plus_dir: str = "/opt/zero123plus"
+    instantmesh_commit_sha: str = Field(default="", max_length=64)
+    instantmesh_marching_cubes_resolution: int = Field(default=256, ge=32, le=512)
+    instantmesh_diffusion_steps: int = Field(default=75, ge=8, le=200)
+    # 0 disables and colour falls back to one sample per vertex. The atlas
+    # carries the detail, so the geometry under it can be far lighter.
+    texture_resolution: int = Field(default=1024, ge=0, le=4096)
+    texture_target_faces: int = Field(default=40_000, ge=0, le=500_000)
     segmentation_model_path: str = Field(
         default="/opt/u2netp/u2netp.onnx", min_length=1, max_length=256
     )

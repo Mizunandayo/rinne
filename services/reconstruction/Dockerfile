@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # docker build -f services/reconstruction/Dockerfile -t rinne-reconstruction:local .
-# Four stages: vendored source, verified weights, python deps, runtime. ~8GB.
+# Five stages: two vendored sources, verified weights, python deps, runtime.
+# ~8GB with triposr alone; ~16GB once InstantMesh's two stages are included.
 
 
 
@@ -22,6 +23,24 @@ RUN git clone -q --filter=blob:none --no-checkout \
  && mkdir -p /opt/triposr/src \
  && cp -r tsr /opt/triposr/src/tsr \
  && cp LICENSE /opt/triposr/src/TRIPOSR-LICENSE
+
+# 1b. InstantMesh source, at a pinned commit. src/ and configs/ only: the repo
+# also carries examples, assets and the training rig, none of which run here.
+FROM python:3.12.14-slim-bookworm AS instantmesh-source
+ARG INSTANTMESH_SHA=08822c52fdc399b93ea00e4fa9e596344ed52ccc
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /clone
+RUN git clone -q --filter=blob:none --no-checkout \
+      https://github.com/TencentARC/InstantMesh.git . \
+ && git sparse-checkout set src configs LICENSE \
+ && git checkout -q "${INSTANTMESH_SHA}" \
+ && test "$(git rev-parse HEAD)" = "${INSTANTMESH_SHA}" \
+ && mkdir -p /opt/instantmesh/src \
+ && cp -r src configs /opt/instantmesh/src/ \
+ && cp LICENSE /opt/instantmesh/src/INSTANTMESH-LICENSE \
+ && test -f /opt/instantmesh/src/configs/instant-nerf-large.yaml
 
 # 2. Weights, every one of them sha256-verified
 FROM python:3.12.14-slim-bookworm AS weights
@@ -52,6 +71,26 @@ RUN mkdir -p /opt/u2netp \
  && echo "${U2NETP_SHA256}  /opt/u2netp/u2netp.onnx" | sha256sum -c -
 
 
+# InstantMesh's two stages. Pinned by HF revision rather than per-file sha256:
+# a revision IS the content hash of the whole tree, and the Zero123++ snapshot is
+# 17 files. The custom pipeline lives in a SEPARATE repo from the weights, and is
+# vendored as pipeline.py so nothing is fetched from the network at load time.
+ARG INSTANTMESH_HF_REVISION=b785b4ecfb6636ef34a08c748f96f6a5686244d0
+ARG ZERO123PLUS_REVISION=2da07e89919e1a130c9b5add1584c70c7aa065fd
+ARG ZERO123PLUS_PIPELINE_REVISION=983e66d28a3637ddd8e3e2fd8165cdff32230872
+
+RUN pip install --no-cache-dir "huggingface-hub==${HUGGINGFACE_HUB_VERSION}" \
+ && python -c "\
+from huggingface_hub import hf_hub_download, snapshot_download; \
+import shutil, os; \
+os.makedirs('/opt/instantmesh/weights', exist_ok=True); \
+[shutil.copy(hf_hub_download(repo_id='TencentARC/InstantMesh', filename=f, revision='${INSTANTMESH_HF_REVISION}'), f'/opt/instantmesh/weights/{f}') for f in ('instant_nerf_large.ckpt', 'diffusion_pytorch_model.bin')]; \
+snapshot_download(repo_id='sudo-ai/zero123plus-v1.2', revision='${ZERO123PLUS_REVISION}', local_dir='/opt/zero123plus'); \
+shutil.copy(hf_hub_download(repo_id='sudo-ai/zero123plus-pipeline', filename='pipeline.py', revision='${ZERO123PLUS_PIPELINE_REVISION}'), '/opt/zero123plus/pipeline.py')" \
+ && test -f /opt/instantmesh/weights/instant_nerf_large.ckpt \
+ && test -f /opt/zero123plus/pipeline.py \
+ && test -f /opt/zero123plus/model_index.json
+
 RUN pip install --no-cache-dir "huggingface-hub==${HUGGINGFACE_HUB_VERSION}" \
  && python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='facebook/dino-vitb16', filename='config.json', revision='${DINO_REVISION}')" \
  && SNAPSHOT="${HF_HOME}/hub/models--facebook--dino-vitb16/snapshots/${DINO_REVISION}" \
@@ -59,6 +98,15 @@ RUN pip install --no-cache-dir "huggingface-hub==${HUGGINGFACE_HUB_VERSION}" \
  && cp --remove-destination "$(readlink -f "${SNAPSHOT}/config.json")" "${SNAPSHOT}/config.json" \
  && mkdir -p "${HF_HOME}/hub/models--facebook--dino-vitb16/refs" \
  && printf '%s' "${DINO_REVISION}" > "${HF_HOME}/hub/models--facebook--dino-vitb16/refs/main"
+
+# TripoSR builds its ViT from the config alone and takes the weights from its own
+# checkpoint. InstantMesh's encoder calls ViTModel.from_pretrained, which wants the
+# real thing - baked here so startup never depends on the network. tf_model.h5 is
+# the TensorFlow copy of the same weights and is excluded.
+RUN python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download(repo_id='facebook/dino-vitb16', revision='${DINO_REVISION}', allow_patterns=['config.json', 'preprocessor_config.json', 'pytorch_model.bin'])" \
+ && test -f "${HF_HOME}/hub/models--facebook--dino-vitb16/snapshots/${DINO_REVISION}/pytorch_model.bin"
 
 # 3. Python dependencies
 FROM python:3.12.14-slim-bookworm AS build
@@ -105,6 +153,9 @@ COPY --from=source --chown=10001:10001 /opt/triposr/src /opt/triposr/src
 COPY --from=weights --chown=10001:10001 /opt/triposr/weights /opt/triposr/weights
 COPY --from=weights --chown=10001:10001 /opt/u2netp /opt/u2netp
 COPY --from=weights --chown=10001:10001 /opt/huggingface /opt/huggingface
+COPY --from=instantmesh-source --chown=10001:10001 /opt/instantmesh/src /opt/instantmesh/src
+COPY --from=weights --chown=10001:10001 /opt/instantmesh/weights /opt/instantmesh/weights
+COPY --from=weights --chown=10001:10001 /opt/zero123plus /opt/zero123plus
 USER 10001:10001
 EXPOSE 8080
 

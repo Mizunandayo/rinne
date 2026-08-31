@@ -1,7 +1,7 @@
 /* The browser half of the parity claim. */
 
 import type { SceneDescription, SimulationResult } from "@rinne/contracts";
-import { MeshDecodeError, initScene, readPositions, simulateScene } from "@rinne/scene";
+import { MeshDecodeError, initScene, type Pose, readPositions, simulateScene } from "@rinne/scene";
 
 /* Same ceiling the server uses. A viewer should never fetch more than this. */
 const MAX_MESH_BYTES = 32 * 1024 * 1024;
@@ -45,6 +45,37 @@ export async function simulateInBrowser(
       kind: "ok",
       result: simulateScene(scene, readPositions(bytes), { runtime: "browser" }),
     };
+  } catch (error) {
+    if (error instanceof MeshDecodeError) return { kind: "failed", rule: error.rule };
+    return { kind: "failed", rule: "simulation failed" };
+  }
+}
+
+export interface ReplayedSimulation {
+  readonly result: SimulationResult;
+  /** One pose per solver step, for playback. Bounded by scene.solver.maxSteps. */
+  readonly poses: readonly Pose[];
+}
+
+export type ReplayOutcome =
+  | { readonly kind: "ok"; readonly replay: ReplayedSimulation }
+  | { readonly kind: "failed"; readonly rule: string };
+
+/* The same simulation, recorded. `bytes` is passed in so a gallery of several
+   tests fetches the mesh once rather than once per test. */
+export async function replayInBrowser(
+  scene: SceneDescription,
+  bytes: Uint8Array,
+): Promise<ReplayOutcome> {
+  await initScene();
+
+  const poses: Pose[] = [];
+  try {
+    const result = simulateScene(scene, readPositions(bytes), {
+      runtime: "browser",
+      onPose: (pose) => poses.push(pose),
+    });
+    return { kind: "ok", replay: { result, poses } };
   } catch (error) {
     if (error instanceof MeshDecodeError) return { kind: "failed", rule: error.rule };
     return { kind: "failed", rule: "simulation failed" };

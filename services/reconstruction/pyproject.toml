@@ -21,6 +21,8 @@ dependencies = [
     "pillow==12.3.0",
     "numpy==2.5.2",
     "trimesh==5.0.0",
+    # What trimesh's simplify_quadric_decimation needs. Prebuilt manylinux wheel.
+    "fast-simplification==0.2.0",
     "scikit-image==0.26.0",
     # u2netp is a 4.5MB ONNX graph. This is a DEFAULT dependency, not a gpu one,
     # so imaging/segmentation.py imports plainly and its maths is tested in CI.
@@ -52,6 +54,18 @@ gpu = [
     "huggingface-hub==0.36.2",
     "omegaconf==2.3.1",
     "einops==0.8.2",
+    # InstantMesh stage 1 is a diffusers pipeline; stage 2 needs lightning's
+    # instantiate_from_config and mcubes. Versions are deliberately NOT the
+    # upstream 2023 pins, which cannot coexist with torch 2.13.
+    "diffusers>=0.31,<0.40",
+    "pytorch-lightning==2.6.5",
+    "PyMCubes==0.1.6",
+    "accelerate==1.14.0",
+    # mesh_util.py imports these at module scope for the UV path this service
+    # never runs. Installed rather than stubbed: both are small, and a real
+    # module cannot be wrong the way a stub of somebody else's API can.
+    "xatlas==0.0.11",
+    "opencv-python-headless==5.0.0.93",
 ]
 
 [build-system]
@@ -142,10 +156,25 @@ ignore_missing_imports = true
 module = ["tsr", "tsr.*"]
 ignore_missing_imports = true
 
+# `src.*` is the vendored InstantMesh tree, same story as `tsr` above. The rest
+# live in the `gpu` group with torch and are imported lazily for the same reason.
+[[tool.mypy.overrides]]
+module = [
+    "src.*",
+    "torchvision.*",
+    "einops",
+    "einops.*",
+    "diffusers",
+    "diffusers.*",
+    "omegaconf",
+    "omegaconf.*",
+]
+ignore_missing_imports = true
+
 # onnxruntime ships no py.typed. Only three of its symbols are used, and every
 # value crossing back out of the session is re-typed by np.asarray at the call site.
 [[tool.mypy.overrides]]
-module = ["onnxruntime", "onnxruntime.*"]
+module = ["onnxruntime", "onnxruntime.*", "xatlas"]
 ignore_missing_imports = true
 
 # -- pytest ------------------------------------------------------------

@@ -298,6 +298,18 @@
           "type": "string",
           "enum": ["flash-selection-v1"]
         },
+        "label": {
+          "description": "What the model called the object. Recorded because the size below is only defensible in terms of it.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "longestDimensionMeters": {
+          "description": "The model's estimate of the object's longest side. A single photograph carries no scale, so this number sets the object's size, its mass and every force the simulation applies. It is an estimate and the result's scaleBasis stays 'assumed'.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        },
         "latencyMs": {
           "type": "integer",
           "minimum": 0,

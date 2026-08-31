@@ -51,7 +51,7 @@ gpu = [
     # What the vendored TripoSR tree imports. transformers is pinned to the last
     # 4.x: 5.x renamed every ViT parameter, so model.ckpt no longer load_state_dicts.
     "transformers==4.57.6",
-    "huggingface-hub==0.36.2",
+    "huggingface-hub==1.29.0",
     "omegaconf==2.3.1",
     "einops==0.8.2",
     # InstantMesh stage 1 is a diffusers pipeline; stage 2 needs lightning's

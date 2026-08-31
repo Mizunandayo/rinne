@@ -48,7 +48,7 @@ gpu = [
     "torchvision==0.28.0",
     # What the vendored TripoSR tree imports. transformers is pinned to the last
     # 4.x: 5.x renamed every ViT parameter, so model.ckpt no longer load_state_dicts.
-    "transformers==4.57.6",
+    "transformers==5.16.1",
     "huggingface-hub==0.36.2",
     "omegaconf==2.3.1",
     "einops==0.8.2",

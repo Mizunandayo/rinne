@@ -1,6 +1,7 @@
 import "server-only";
 import {
   compileValidator,
+  ContractViolationError,
   reconstructionResultSchema,
   type ReconstructionResult,
 } from "@rinne/contracts";
@@ -66,6 +67,25 @@ export async function callReconstruction(form: FormData): Promise<ReconstructOut
     // is exactly the thing that must not reach a viewer as a broken mesh.
     return { kind: "ok", result: assertResult(safeParse(text)) };
   } catch (error) {
+    // A contract violation is NOT a network failure, and calling it one sent three
+    // rounds of debugging at the network. It means this build and the service
+    // disagree about the schema - usually one of them was deployed and the other
+    // was not - so the log has to name the mismatch.
+    if (error instanceof ContractViolationError) {
+      console.error(
+        JSON.stringify({
+          severity: "ERROR",
+          message: "reconstruction returned a result this build cannot validate",
+          reason: "contract-mismatch",
+          detail: error.message,
+        }),
+      );
+      return {
+        kind: "unavailable",
+        error: "Reconstruction returned a result this build does not recognise",
+      };
+    }
+
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     console.error(
       JSON.stringify({

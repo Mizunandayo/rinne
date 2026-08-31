@@ -53,10 +53,26 @@ export function digestOf(parts: readonly (string | number)[]): string {
   return hash.toString(16).padStart(16, "0");
 }
 
+export interface Pose {
+  readonly translation: { readonly x: number; readonly y: number; readonly z: number };
+  readonly rotation: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+    readonly w: number;
+  };
+}
+
 export interface SimulateOptions {
   readonly runtime: "node" | "browser";
   /** Injectable so a test can assert on a fixed timestamp. */
   readonly now?: () => Date;
+  /**
+   * Called after every step, for a viewer that wants to REPLAY the simulation
+   * rather than read its verdict. Purely an observer: the server never passes
+   * one, so the result and its digest cannot depend on whether anyone watched.
+   */
+  readonly onPose?: (pose: Pose) => void;
 }
 
 export function simulateScene(
@@ -133,6 +149,15 @@ export function simulateScene(
       }
 
       for (let sub = 0; sub < substeps; sub += 1) world.step();
+
+      if (options.onPose !== undefined) {
+        const t = body.translation();
+        const r = body.rotation();
+        options.onPose({
+          translation: { x: t.x, y: t.y, z: t.z },
+          rotation: { x: r.x, y: r.y, z: r.z, w: r.w },
+        });
+      }
 
       const translation = body.translation();
       const tilt = tiltDegrees(body.rotation());

@@ -155,11 +155,12 @@ class ConfidenceWeights(BaseModel):
 
 class Name1(StrEnum):
     """
-    stub: a deterministic procedural mesh, honest about being one. triposr: the real model.
+    stub: a deterministic procedural mesh, honest about being one. triposr: single-image feed-forward, fast and coarse. instantmesh: multi-view diffusion into a sparse-view reconstruction, slower and far cleaner. Which one ran is a property of the result, not of the deployment, because the document has to stay readable long after the environment changed.
     """
 
     stub = "stub"
     triposr = "triposr"
+    instantmesh = "instantmesh"
 
 
 class Device(StrEnum):
@@ -177,7 +178,7 @@ class PipelineInfo(BaseModel):
     )
     name: Name1
     """
-    stub: a deterministic procedural mesh, honest about being one. triposr: the real model.
+    stub: a deterministic procedural mesh, honest about being one. triposr: single-image feed-forward, fast and coarse. instantmesh: multi-view diffusion into a sparse-view reconstruction, slower and far cleaner. Which one ran is a property of the result, not of the deployment, because the document has to stay readable long after the environment changed.
     """
     version: str = Field(..., max_length=64, min_length=1)
     """

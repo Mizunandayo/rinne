@@ -11,6 +11,14 @@ from rinne_agent.agents.selection import (
     build_selection_agent,
 )
 
+PICK = {
+    "kind": "tip",
+    "confidence": 0.8,
+    "rationale": "x",
+    "label": "water bottle",
+    "longest_dimension_meters": 0.3,
+}
+
 
 def agent() -> LlmAgent:
     return build_selection_agent(
@@ -38,25 +46,41 @@ def test_the_instruction_covers_every_test_kind_and_forbids_emojis() -> None:
     for kind in ("tip", "load", "drop", "none"):
         assert f"{kind} -" in SELECTION_INSTRUCTION
     assert "Never use emojis" in SELECTION_INSTRUCTION
-    # Forces and heights are the service's measurement, not the model's guess.
-    assert "Do not estimate mass, force or dimensions" in SELECTION_INSTRUCTION
+    # Force is derived from scale, so the model states scale and never force.
+    assert "Do not estimate mass or force" in SELECTION_INSTRUCTION
 
 
-def test_the_model_is_asked_for_a_choice_and_nothing_it_cannot_know() -> None:
-    assert set(SelectionOutput.model_fields) == {"kind", "confidence", "rationale"}
+def test_the_model_is_asked_for_scale_because_nothing_downstream_can_recover_it() -> None:
+    """A single photograph carries no scale. Without this the service assumes every
+    object is 0.30 m, which is a four-fold error on a charger adapter and makes the
+    mass, and therefore every force in the simulation, meaningless."""
+    assert set(SelectionOutput.model_fields) == {
+        "kind",
+        "confidence",
+        "rationale",
+        "label",
+        "longest_dimension_meters",
+    }
+    assert "longest_dimension_meters" in SELECTION_INSTRUCTION
+    assert "0.07" in SELECTION_INSTRUCTION
+
+
+def test_a_size_no_object_could_have_is_refused() -> None:
+    for meters in (0.0, -1.0, 6.0):
+        with pytest.raises(ValidationError):
+            SelectionOutput.model_validate(
+                {**PICK, "longest_dimension_meters": meters},
+            )
 
 
 @pytest.mark.parametrize("kind", ["tip", "load", "drop", "none"])
 def test_every_legal_kind_validates(kind: str) -> None:
-    assert (
-        SelectionOutput.model_validate({"kind": kind, "confidence": 0.8, "rationale": "x"}).kind
-        == kind
-    )
+    assert SelectionOutput.model_validate({**PICK, "kind": kind}).kind == kind
 
 
 def test_an_invented_test_kind_is_refused() -> None:
     with pytest.raises(ValidationError):
-        SelectionOutput.model_validate({"kind": "shake", "confidence": 0.8, "rationale": "x"})
+        SelectionOutput.model_validate({**PICK, "kind": "shake"})
 
 
 async def test_the_stub_selector_is_offline_and_says_so() -> None:
@@ -65,6 +89,7 @@ async def test_the_stub_selector_is_offline_and_says_so() -> None:
     )
     assert outcome.model == "stub-selection"
     assert outcome.output.kind == "drop"
+    assert outcome.output.longest_dimension_meters == 0.3
     assert "No model was called" in outcome.output.rationale
 
 

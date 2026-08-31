@@ -9,6 +9,15 @@ import { Button } from "@/components/Button";
 import { CameraCapture } from "@/components/CameraCapture";
 import { ConfidenceReadout } from "@/components/ConfidenceReadout";
 import { SettlingLoader } from "@/components/SettlingLoader";
+import type { Pose } from "@rinne/scene";
+import type { Identification } from "@/components/SimulationGallery";
+
+// Rapier is WASM and three touches the DOM on construction, so neither renders
+// on the server.
+const SimulationGallery = dynamic(
+  () => import("@/components/SimulationGallery").then((m) => m.SimulationGallery),
+  { ssr: false, loading: () => <SettlingLoader label="Preparing the solver" /> },
+);
 
 // three touches the DOM on construction, so it never renders on the server.
 const MeshViewer = dynamic(() => import("@/components/MeshViewer").then((m) => m.MeshViewer), {
@@ -17,6 +26,23 @@ const MeshViewer = dynamic(() => import("@/components/MeshViewer").then((m) => m
 });
 
 type Phase = "idle" | "working" | "done" | "error";
+
+/* Best effort by design: identification is commentary on a mesh that already
+   exists, so every failure here returns null rather than surfacing an error. */
+async function identify(file: File): Promise<Identification | null> {
+  const form = new FormData();
+  form.append("image", file, file.name);
+  try {
+    const response = await fetch("/api/identify", { method: "POST", body: form });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    return typeof body === "object" && body !== null && "label" in body
+      ? (body as Identification)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function newRequestId(): string {
   // Must satisfy the contract's ^[a-z0-9][a-z0-9-]{7,63}$ - the same pattern
@@ -28,12 +54,15 @@ function newRequestId(): string {
 export default function ScanPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<ReconstructionResult | null>(null);
+  const [pose, setPose] = useState<Pose | null>(null);
+  const [identified, setIdentified] = useState<Identification | null>(null);
   const [error, setError] = useState<string>("");
 
   const reset = useCallback(() => {
     setPhase("idle");
     setResult(null);
     setError("");
+    setIdentified(null);
   }, []);
 
   const submit = useCallback(async (files: readonly File[]) => {
@@ -63,6 +92,11 @@ export default function ScanPage() {
 
       setResult(body as ReconstructionResult);
       setPhase("done");
+
+      // Identification runs AFTER the mesh is on screen and never blocks it. A
+      // model that is slow, or refuses, must not cost the reconstruction.
+      const first = files[0];
+      if (first !== undefined) void identify(first).then(setIdentified);
     } catch {
       setError("The scan could not be sent. Check your connection and try again.");
       setPhase("error");
@@ -117,9 +151,13 @@ export default function ScanPage() {
             <MeshViewer
               requestId={result.requestId}
               heightMeters={result.mesh.extent.y}
-              confidence={result.confidence.score}
+              pose={pose}
             />
             <ConfidenceReadout confidence={result.confidence} />
+          </section>
+
+          <section className="rinne-enter" aria-label="Physics simulation">
+            <SimulationGallery result={result} onPose={setPose} identified={identified} />
           </section>
 
           <section className="rinne-facts rinne-enter" aria-label="Reconstruction detail">

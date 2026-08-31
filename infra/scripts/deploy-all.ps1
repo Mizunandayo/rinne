@@ -99,7 +99,14 @@ $config = @{
         Memory      = '16Gi'
         Cpu         = '4'
         Gpu         = $true
-        Env         = @{ APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false'; PIPELINE_NAME = 'triposr'; STORAGE_MODE = 'gcs' }
+        Env         = @{
+            APP_ENV = 'production'; LOG_LEVEL = 'INFO'; ENABLE_DOCS = 'false'; STORAGE_MODE = 'gcs'
+            # instantmesh reconstructs from six generated views; triposr from one
+            # photograph. Switching is an env var on a live revision, so a bad
+            # result rolls back in a minute without a rebuild.
+            PIPELINE_NAME = 'instantmesh'
+            INSTANTMESH_COMMIT_SHA = '08822c52fdc399b93ea00e4fa9e596344ed52ccc'
+        }
     }
     agent = @{
         Name        = 'rinne-agent'
@@ -143,7 +150,11 @@ $config = @{
         Public      = $true
         MaxInstances= 5
         Concurrency = 80
-        TimeoutSec  = 60
+        # Cloud Run kills the request at this figure regardless of
+        # RECONSTRUCT_TIMEOUT_MS, which is only the app's own fetch budget. 60s
+        # was ample for triposr at 3s; instantmesh runs 75 diffusion steps first
+        # and a cold L4 adds minutes on top.
+        TimeoutSec  = 300
         Memory      = '1Gi'
         Cpu         = '1'
         Env         = @{ NODE_ENV = 'production' }

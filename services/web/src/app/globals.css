@@ -605,6 +605,46 @@ button:disabled,
   display: block;
 }
 
+/* The live edge trace. Same object-fit as the video beneath it, so the browser
+   crops both identically and the dots land on the object rather than beside it. */
+.rinne-capture-trace {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.rinne-capture-trace[data-mirrored="true"] {
+  transform: scaleX(-1);
+}
+
+/* Only tappable while locking, so orbiting the page is never intercepted. */
+.rinne-capture-trace[data-locking="true"] {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.rinne-capture-stage:fullscreen {
+  aspect-ratio: auto;
+  max-height: none;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+
+.rinne-capture-stage:fullscreen .rinne-capture-video,
+.rinne-capture-stage:fullscreen .rinne-capture-trace {
+  object-fit: contain;
+}
+
+.rinne-capture-cue[data-weak="true"] {
+  background-color: var(--rinne-hazard);
+}
+
 .rinne-capture-overlay {
   position: absolute;
   inset: 0;
@@ -887,4 +927,155 @@ button:disabled,
    image the model sees - is never mirrored. */
 .rinne-capture-video[data-mirrored="true"] {
   transform: scaleX(-1);
+}
+
+/* Physics gallery. Verdict is the only place colour is allowed to mean something:
+   hazard for a real detected instability, verified for a confirmed stable result. */
+.rinne-sim {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-4);
+  padding: var(--rinne-space-6);
+  border: 1px solid var(--rinne-border);
+  border-left: 3px solid var(--rinne-border-strong);
+  border-radius: var(--rinne-radius);
+}
+
+.rinne-sim-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--rinne-space-2);
+  font-size: var(--rinne-text-body);
+  max-width: 60ch;
+}
+
+.rinne-sim-lead[data-busy="true"] svg {
+  animation: rinne-spin 900ms linear infinite;
+}
+
+.rinne-sim-lead[data-failed="true"] {
+  color: var(--rinne-hazard);
+  font-weight: var(--rinne-weight-medium);
+}
+
+.rinne-sim-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--rinne-space-3);
+}
+
+.rinne-sim-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-1);
+  padding: var(--rinne-space-3) var(--rinne-space-4);
+  background-color: var(--rinne-bg);
+  border: 1px solid var(--rinne-border);
+  border-radius: var(--rinne-radius);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--rinne-dur-quick) var(--rinne-ease-approach);
+}
+
+.rinne-sim-tab:hover {
+  border-color: var(--rinne-border-strong);
+}
+
+.rinne-sim-tab[data-selected="true"] {
+  border-color: var(--rinne-border-strong);
+  border-left-width: 3px;
+}
+
+.rinne-sim-tab-title {
+  font-weight: var(--rinne-weight-semibold);
+  font-size: var(--rinne-text-body);
+}
+
+.rinne-sim-tab-verdict,
+.rinne-sim-facts dd[data-verdict] {
+  font-size: var(--rinne-text-caption);
+  font-weight: var(--rinne-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rinne-sim-tab[data-verdict="stable"] .rinne-sim-tab-verdict,
+.rinne-sim-facts dd[data-verdict="stable"] {
+  color: var(--rinne-verified);
+}
+
+.rinne-sim-tab[data-verdict="tipped"] .rinne-sim-tab-verdict,
+.rinne-sim-tab[data-verdict="slid"] .rinne-sim-tab-verdict,
+.rinne-sim-facts dd[data-verdict="tipped"],
+.rinne-sim-facts dd[data-verdict="slid"] {
+  color: var(--rinne-hazard);
+}
+
+.rinne-sim-caption {
+  font-size: var(--rinne-text-body);
+  max-width: 62ch;
+}
+
+.rinne-sim-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: var(--rinne-space-4);
+  margin: 0;
+  padding-top: var(--rinne-space-3);
+  border-top: 1px solid var(--rinne-border);
+}
+
+.rinne-sim-facts dt {
+  font-size: var(--rinne-text-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rinne-sim-facts dd {
+  margin: 0;
+  font-size: var(--rinne-text-heading);
+  font-weight: var(--rinne-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.rinne-sim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rinne-space-3);
+}
+
+@keyframes rinne-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* What the model said this is, above the tests it chose. */
+.rinne-sim-identified {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rinne-space-1);
+  padding: var(--rinne-space-3) var(--rinne-space-4);
+  background-color: var(--rinne-panel);
+  border-radius: var(--rinne-radius);
+}
+
+.rinne-sim-identified strong {
+  font-size: var(--rinne-text-heading);
+  font-weight: var(--rinne-weight-semibold);
+}
+
+.rinne-sim-identified span {
+  font-size: var(--rinne-text-caption);
+}
+
+.rinne-sim-why {
+  max-width: 62ch;
+  padding-top: var(--rinne-space-1);
+}
+
+/* The one the model picked for this object, before anyone clicks. */
+.rinne-sim-tab[data-primary="true"] .rinne-sim-tab-title::after {
+  content: " *";
+  font-weight: var(--rinne-weight-bold);
 }

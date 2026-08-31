@@ -362,6 +362,18 @@ export const agentJobSchema = {
             "flash-selection-v1"
           ]
         },
+        "label": {
+          "description": "What the model called the object. Recorded because the size below is only defensible in terms of it.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "longestDimensionMeters": {
+          "description": "The model's estimate of the object's longest side. A single photograph carries no scale, so this number sets the object's size, its mass and every force the simulation applies. It is an estimate and the result's scaleBasis stays 'assumed'.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        },
         "latencyMs": {
           "type": "integer",
           "minimum": 0,
@@ -1153,11 +1165,12 @@ export const reconstructionResultSchema = {
       ],
       "properties": {
         "name": {
-          "description": "stub: a deterministic procedural mesh, honest about being one. triposr: the real model.",
+          "description": "stub: a deterministic procedural mesh, honest about being one. triposr: single-image feed-forward, fast and coarse. instantmesh: multi-view diffusion into a sparse-view reconstruction, slower and far cleaner. Which one ran is a property of the result, not of the deployment, because the document has to stay readable long after the environment changed.",
           "type": "string",
           "enum": [
             "stub",
-            "triposr"
+            "triposr",
+            "instantmesh"
           ]
         },
         "version": {

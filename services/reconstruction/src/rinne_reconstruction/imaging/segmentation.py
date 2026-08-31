@@ -67,12 +67,16 @@ def crop_and_composite(
     mask: NDArray[np.float32],
     *,
     foreground_ratio: float,
+    background: float = _BACKGROUND_VALUE,
 ) -> Image.Image:
-    """Crop to the subject, centre it on a square, and composite it on mid grey.
+    """Crop to the subject, centre it on a square, and composite it on `background`.
 
-    This is TripoSR's own `resize_foreground` plus run.py's grey composite,
-    done in one pass so the model receives exactly the framing it was trained
-    on rather than whatever the photographer chose.
+    This is TripoSR's own `resize_foreground` plus run.py's composite, done in one
+    pass so the model receives exactly the framing it was trained on rather than
+    whatever the photographer chose. The default is TripoSR's mid grey; InstantMesh
+    needs white, and passing the wrong one is not cosmetic - Zero123++ carries the
+    background into all six generated views and the reconstructor builds it as
+    geometry.
     """
     solid = mask >= MASK_THRESHOLD
     rows = np.flatnonzero(solid.any(axis=1))
@@ -85,11 +89,11 @@ def crop_and_composite(
 
     rgb = np.asarray(image.convert("RGB"), dtype=np.float32)[top:bottom, left:right] / 255.0
     alpha = mask[top:bottom, left:right][..., np.newaxis]
-    subject = rgb * alpha + _BACKGROUND_VALUE * (1.0 - alpha)
+    subject = rgb * alpha + background * (1.0 - alpha)
 
     height, width = subject.shape[0], subject.shape[1]
     edge = max(int(round(max(height, width) / foreground_ratio)), max(height, width))
-    canvas = np.full((edge, edge, 3), _BACKGROUND_VALUE, dtype=np.float32)
+    canvas = np.full((edge, edge, 3), background, dtype=np.float32)
     offset_y = (edge - height) // 2
     offset_x = (edge - width) // 2
     canvas[offset_y : offset_y + height, offset_x : offset_x + width] = subject

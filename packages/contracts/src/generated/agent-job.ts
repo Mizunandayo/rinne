@@ -170,6 +170,14 @@ export interface SelectionRecord {
   confidence: number;
   model: string;
   basis: "flash-selection-v1";
+  /**
+   * What the model called the object. Recorded because the size below is only defensible in terms of it.
+   */
+  label?: string;
+  /**
+   * The model's estimate of the object's longest side. A single photograph carries no scale, so this number sets the object's size, its mass and every force the simulation applies. It is an estimate and the result's scaleBasis stays 'assumed'.
+   */
+  longestDimensionMeters?: number;
   latencyMs: number;
   promptTokens?: number;
   responseTokens?: number;

@@ -167,6 +167,16 @@ class SelectionRecord(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     model: str = Field(..., max_length=64, min_length=1)
     basis: Basis1
+    label: str | None = Field(None, max_length=64, min_length=1)
+    """
+    What the model called the object. Recorded because the size below is only defensible in terms of it.
+    """
+    longest_dimension_meters: float | None = Field(
+        None, alias="longestDimensionMeters", gt=0.0, le=5.0
+    )
+    """
+    The model's estimate of the object's longest side. A single photograph carries no scale, so this number sets the object's size, its mass and every force the simulation applies. It is an estimate and the result's scaleBasis stays 'assumed'.
+    """
     latency_ms: int = Field(..., alias="latencyMs", ge=0, le=600000)
     prompt_tokens: int | None = Field(None, alias="promptTokens", ge=0, le=10000000)
     response_tokens: int | None = Field(None, alias="responseTokens", ge=0, le=10000000)

@@ -36,6 +36,22 @@ def build_pipeline(settings: Settings) -> Reconstructor:
     if settings.pipeline_name == "stub":
         return StubReconstructor(resolution=settings.stub_resolution)
 
+    if settings.pipeline_name == "instantmesh":
+        from rinne_reconstruction.pipeline.instantmesh import build_instantmesh_reconstructor
+
+        return build_instantmesh_reconstructor(
+            source_dir=settings.instantmesh_source_dir,
+            weights_dir=settings.instantmesh_weights_dir,
+            zero123plus_dir=settings.zero123plus_dir,
+            segmentation_model_path=settings.segmentation_model_path,
+            commit_sha=settings.instantmesh_commit_sha,
+            marching_cubes_resolution=settings.instantmesh_marching_cubes_resolution,
+            foreground_ratio=settings.triposr_foreground_ratio,
+            diffusion_steps=settings.instantmesh_diffusion_steps,
+            texture_resolution=settings.texture_resolution,
+            texture_faces=settings.texture_target_faces,
+        )
+
     # Imported here rather than at module scope: torch and the vendored TripoSR
     # tree exist only in the GPU image, and the stub path must import without them.
     from rinne_reconstruction.pipeline.triposr import build_triposr_reconstructor

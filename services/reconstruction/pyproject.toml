@@ -174,7 +174,7 @@ ignore_missing_imports = true
 # onnxruntime ships no py.typed. Only three of its symbols are used, and every
 # value crossing back out of the session is re-typed by np.asarray at the call site.
 [[tool.mypy.overrides]]
-module = ["onnxruntime", "onnxruntime.*", "xatlas"]
+module = ["onnxruntime", "onnxruntime.*", "xatlas", "o_voxel", "trellis2", "trellis2.*"]
 ignore_missing_imports = true
 
 # -- pytest ------------------------------------------------------------

@@ -247,3 +247,35 @@ def test_the_result_says_it_is_uncalibrated() -> None:
         ).calibrated
         is False
     )
+
+
+def test_dropping_field_decisiveness_still_sums_to_one() -> None:
+    """A pipeline that reports no density field must not be SCORED zero for it.
+    That reads "not measured" as "worst possible", and it is 45% of the weight."""
+    rescaled = FULL_WEIGHTS.without_field_decisiveness()
+    assert rescaled.field_decisiveness is None
+    assert "fieldDecisiveness" not in rescaled.as_payload()
+    assert sum(rescaled.as_payload().values()) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_dropping_both_unavailable_components_still_sums_to_one() -> None:
+    rescaled = FULL_WEIGHTS.without_foreground_quality().without_field_decisiveness()
+    assert rescaled.field_decisiveness is None
+    assert rescaled.foreground_quality is None
+    assert sum(rescaled.as_payload().values()) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_a_pipeline_without_a_field_scores_far_above_zero() -> None:
+    """The bug this replaces: an absent measurement dragged a good mesh to 39.6%."""
+    weights = FULL_WEIGHTS.without_field_decisiveness()
+    components = {"watertightness": 1.0, "volumePlausibility": 0.62, "foregroundQuality": 0.88}
+    breakdown = confidence.compose(
+        components=components,
+        weights=weights,
+        face_count=50_000,
+        min_faces=64,
+        low_max=0.45,
+        high_min=0.70,
+        calibrated=False,
+    )
+    assert breakdown.score > 0.8

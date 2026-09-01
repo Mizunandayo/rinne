@@ -197,7 +197,7 @@ export interface PipelineInfo {
   /**
    * stub: a deterministic procedural mesh, honest about being one. triposr: single-image feed-forward, fast and coarse. instantmesh: multi-view diffusion into a sparse-view reconstruction, slower and far cleaner. Which one ran is a property of the result, not of the deployment, because the document has to stay readable long after the environment changed.
    */
-  name: "stub" | "triposr" | "instantmesh";
+  name: "stub" | "triposr" | "instantmesh" | "trellis2";
   /**
    * Pipeline build identifier. For triposr this is the pinned upstream commit SHA, which is what makes vendoring at a known state a truthful claim rather than a hope.
    */
@@ -243,6 +243,7 @@ export interface ReconstructionNotice {
     | "scale-assumed"
     | "confidence-uncalibrated"
     | "foreground-quality-unavailable"
+    | "field-decisiveness-unavailable"
     | "images-ignored"
     | "material-weak-signal"
     | "low-face-count"

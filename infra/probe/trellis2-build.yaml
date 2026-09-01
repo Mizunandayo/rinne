@@ -1,0 +1,36 @@
+# The full TRELLIS.2 image. Separate from the service's own build because it
+# uses a different Dockerfile, a CUDA base, and a four-hour budget.
+#
+#   gcloud builds submit --config infra/probe/trellis2-build.yaml --region=asia-southeast1 .
+#
+# It pushes to a DISTINCT tag, so the image currently serving is never replaced
+# by this one - deploying it is a separate, deliberate step.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args:
+      - build
+      - -f
+      - services/reconstruction/Dockerfile.trellis2
+      - -t
+      - asia-southeast1-docker.pkg.dev/rinnehackathon/rinne/rinne-reconstruction:trellis2
+      - .
+    timeout: "14400s"
+
+images:
+  - asia-southeast1-docker.pkg.dev/rinnehackathon/rinne/rinne-reconstruction:trellis2
+
+# Four hours. Four CUDA extensions compile here, ~8GB of weights download, and
+# the finished image is roughly 30GB to push - the one-hour budget the service
+# build uses is not close.
+timeout: "14400s"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Cloud Build accepts only a small enum here - E2_MEDIUM, E2_HIGHCPU_8,
+  # E2_HIGHCPU_32, N1_HIGHCPU_8, N1_HIGHCPU_32 - so there is no 32GB 8-core
+  # option. E2_HIGHCPU_32 was quota-rejected in this region in August. The fix
+  # for the worker that died is therefore MAX_JOBS=2 in the Dockerfile, not a
+  # bigger machine: two nvcc processes fit in 8GB where eight did not.
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 300

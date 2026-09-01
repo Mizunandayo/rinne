@@ -30,6 +30,10 @@ const LOCK_PADDING = 0.35;
 const NO_OBJECT = 0.03;
 const TOO_FAR = 0.1;
 
+// One photograph is enough: the reconstructor invents six consistent views from
+// it. More sides mean a better segmentation and a better first view, and at SIX
+// shot on its own rig the invention step is skipped for real observation - but
+// four is the comfortable number, so four is what this asks for.
 const VIEWS = ["Front", "Left side", "Back", "Right side"] as const;
 
 type Phase = "starting" | "live" | "denied" | "unsupported";

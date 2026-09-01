@@ -64,6 +64,8 @@ _NOTICE_TEXT: Final[dict[str, str]] = {
     "stub-pipeline": "Geometry came from the stub pipeline and is a placeholder shape.",
     "scale-assumed": "Scale was assumed, not measured. No fiducial marker was present.",
     "confidence-uncalibrated": "Confidence bands are documented guesses, not measured thresholds.",
+    "field-decisiveness-unavailable": "This pipeline reports no density field, so "
+    "fieldDecisiveness is absent and the weights are renormalised over the rest.",
     "foreground-quality-unavailable": "This pipeline does not segment, so foregroundQuality is "
     "absent and the weights are renormalised over three components.",
     "images-ignored": "More than one image was accepted; this build reconstructs from the first.",
@@ -200,10 +202,12 @@ def _compute(
     settings: Settings,
     pipeline: Reconstructor,
     longest_dimension_meters: float,
+    label: str | None,
+    views: list[Image.Image] | None,
 ) -> _Computed:
     """The blocking half. Runs on a worker thread, never on the event loop."""
     inference_started = time.perf_counter()
-    raw = pipeline.reconstruct(image)
+    raw = pipeline.reconstruct(image, label=label, views=views)
     inference_ms = int((time.perf_counter() - inference_started) * 1000)
 
     mesh_started = time.perf_counter()
@@ -222,11 +226,6 @@ def _compute(
     mesh_ms = int((time.perf_counter() - mesh_started) * 1000)
 
     components = {
-        "fieldDecisiveness": confidence.field_decisiveness(
-            raw.deviation,
-            band_ratio=settings.ambiguity_band_ratio,
-            reference=settings.ambiguity_reference,
-        ),
         "watertightness": confidence.watertightness(
             is_watertight=measurements.watertight,
             boundary_edge_ratio=measurements.boundary_edge_ratio,
@@ -241,6 +240,16 @@ def _compute(
         volume_plausibility=settings.confidence_weight_volume_plausibility,
         foreground_quality=settings.confidence_weight_foreground_quality,
     )
+    if raw.deviation.size == 0:
+        # No density field to read, so the component is absent rather than zero.
+        weights = weights.without_field_decisiveness()
+    else:
+        components["fieldDecisiveness"] = confidence.field_decisiveness(
+            raw.deviation,
+            band_ratio=settings.ambiguity_band_ratio,
+            reference=settings.ambiguity_reference,
+        )
+
     if raw.foreground is None:
         # No segmentation mask, so no fourth component and no weight for one.
         weights = weights.without_foreground_quality()
@@ -293,6 +302,8 @@ def _notices(
         codes.append(("confidence-uncalibrated", "info"))
     if "foregroundQuality" not in computed.breakdown.components:
         codes.append(("foreground-quality-unavailable", "info"))
+    if "fieldDecisiveness" not in computed.breakdown.components:
+        codes.append(("field-decisiveness-unavailable", "info"))
     if received > used:
         codes.append(("images-ignored", "info"))
     if computed.material_estimate.confidence < 0.5:
@@ -369,6 +380,8 @@ async def reconstruct(request: Request, settings: SettingsDep) -> Reconstruction
                     settings=settings,
                     pipeline=pipeline,
                     longest_dimension_meters=longest_dimension,
+                    label=document.label,
+                    views=images,
                 )
             )
         except MeshNormalisationError as exc:

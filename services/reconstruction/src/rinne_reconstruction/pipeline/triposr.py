@@ -55,7 +55,16 @@ class TripoSRReconstructor:
     def device(self) -> Device:
         return self._device
 
-    def reconstruct(self, image: Image.Image) -> RawReconstruction:
+    def reconstruct(
+        self,
+        image: Image.Image,
+        *,
+        label: str | None = None,
+        views: list[Image.Image] | None = None,
+    ) -> RawReconstruction:
+        # TripoSR is DINO into a triplane transformer. There is no text input
+        # to condition, so a label cannot reach it.
+        del label, views
         import torch
 
         foreground = self._segmenter.segment(image)

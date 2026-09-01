@@ -12,7 +12,7 @@ from PIL import Image
 if TYPE_CHECKING:
     from PIL.Image import Image as PillowImage
 
-PipelineName = Literal["stub", "triposr", "instantmesh"]
+PipelineName = Literal["stub", "triposr", "instantmesh", "trellis2"]
 Device = Literal["cpu", "cuda"]
 
 
@@ -58,4 +58,10 @@ class Reconstructor(Protocol):
     @property
     def device(self) -> Device: ...
 
-    def reconstruct(self, image: Image.Image) -> RawReconstruction: ...
+    def reconstruct(
+        self,
+        image: Image.Image,
+        *,
+        label: str | None = None,
+        views: list[Image.Image] | None = None,
+    ) -> RawReconstruction: ...

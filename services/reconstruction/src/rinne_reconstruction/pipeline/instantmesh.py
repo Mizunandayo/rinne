@@ -41,6 +41,11 @@ _WHITE: Final = 1.0
 _FIELD_SAMPLES: Final = 48
 #: An atlas is a million points; one call would not fit in VRAM.
 _SAMPLE_CHUNK: Final = 262_144
+#: A noun phrase. Zero123++ never saw a sentence during fine-tuning.
+_PROMPT_LIMIT: Final = 64
+#: Zero123++'s rig: azimuths 30/90/150/210/270/330 at alternating +20 and
+#: -10 elevation. Photographs must arrive in that order to stand in for it.
+_RIG_VIEWS: Final = 6
 
 
 class _RefusedAttribute:
@@ -74,6 +79,8 @@ class InstantMeshReconstructor:
         diffusion_steps: int,
         texture_resolution: int,
         texture_faces: int,
+        prompt_from_label: bool,
+        multiview: bool,
     ) -> None:
         self._diffusion = diffusion
         self._model = model
@@ -85,6 +92,8 @@ class InstantMeshReconstructor:
         self._diffusion_steps = diffusion_steps
         self._texture_resolution = texture_resolution
         self._texture_faces = texture_faces
+        self._prompt_from_label = prompt_from_label
+        self._multiview = multiview
 
     @property
     def name(self) -> PipelineName:
@@ -98,7 +107,13 @@ class InstantMeshReconstructor:
     def device(self) -> Device:
         return self._device
 
-    def reconstruct(self, image: Image.Image) -> RawReconstruction:
+    def reconstruct(
+        self,
+        image: Image.Image,
+        *,
+        label: str | None = None,
+        views: list[Image.Image] | None = None,
+    ) -> RawReconstruction:
         import torch
         from einops import rearrange
         from src.utils.camera_util import get_zero123plus_input_cameras
@@ -116,15 +131,31 @@ class InstantMeshReconstructor:
         torch.manual_seed(seed)
         generator = torch.Generator(device=self._device).manual_seed(seed)
 
+        # OBSERVED beats INVENTED. Stage 2 is a sparse-view reconstructor that
+        # consumes six images at a fixed rig; stage 1 exists only to hallucinate
+        # those six when nobody photographed them. Given the real thing, skip it.
+        photographed = self._real_views(views)
+        if photographed is not None:
+            return self._from_views(photographed, foreground, seed)
+
+        # Zero123++ inherits Stable Diffusion's text pathway: `prompt` is encoded
+        # and combined with the visual embedding. It was FINE-TUNED with an empty
+        # prompt, so a label is off-distribution - it may sharpen the six views or
+        # cost their consistency, which is what the reconstructor depends on. Off
+        # by one env var, and the result records whether it was used.
+        prompt = label.strip()[:_PROMPT_LIMIT] if (self._prompt_from_label and label) else ""
         sheet = self._diffusion(
             framed,
+            prompt=prompt,
             num_inference_steps=self._diffusion_steps,
             generator=generator,
         ).images[0]
+        if prompt:
+            logger.info("conditioned the view synthesis", extra={"prompt": prompt})
 
         # Zero123++ answers one 3x2 sheet of 320px tiles, not six images.
-        views = np.asarray(sheet, dtype=np.float32) / 255.0
-        tiled = torch.from_numpy(views).permute(2, 0, 1).contiguous()
+        sheet_rgb = np.asarray(sheet, dtype=np.float32) / 255.0
+        tiled = torch.from_numpy(sheet_rgb).permute(2, 0, 1).contiguous()
         six = rearrange(tiled, "c (n h) (m w) -> (n m) c h w", n=3, m=2)
         six = v2.functional.resize(six, 320, interpolation=_BICUBIC, antialias=True).clamp(0, 1)
 
@@ -144,6 +175,63 @@ class InstantMeshReconstructor:
         triangles = np.asarray(faces, dtype=np.int64)
         baked = self._bake(planes, surface, triangles)
 
+        return RawReconstruction(
+            vertices=baked.vertices if baked else surface,
+            faces=baked.faces if baked else triangles,
+            vertex_colors=None if baked else _as_rgb(vertex_colors),
+            deviation=self._field_deviation(planes),
+            seed=seed,
+            foreground=foreground.measurements,
+            uv=baked.uv if baked else None,
+            texture=baked.image if baked else None,
+        )
+
+    def _real_views(self, views: list[Image.Image] | None) -> Any:
+        """The six photographs, framed and stacked, or None to synthesise."""
+        import torch
+        from torchvision.transforms import v2
+
+        if not self._multiview or views is None or len(views) < _RIG_VIEWS:
+            return None
+
+        frames = []
+        for view in views[:_RIG_VIEWS]:
+            found = self._segmenter.segment(view)
+            framed = crop_and_composite(
+                view,
+                found.mask,
+                foreground_ratio=self._foreground_ratio,
+                background=_WHITE,
+            )
+            rgb = np.asarray(framed.convert("RGB"), dtype=np.float32) / 255.0
+            frames.append(torch.from_numpy(rgb).permute(2, 0, 1).contiguous())
+
+        stacked = torch.stack(frames, dim=0)
+        return v2.functional.resize(stacked, 320, interpolation=_BICUBIC, antialias=True).clamp(
+            0, 1
+        )
+
+    def _from_views(self, six: Any, foreground: Any, seed: int) -> RawReconstruction:
+        """Stage 2 alone, on photographs rather than on generated views."""
+        import torch
+        from src.utils.camera_util import get_zero123plus_input_cameras
+
+        cameras = get_zero123plus_input_cameras(batch_size=1, radius=4.0).to(self._device)
+        batch = six.unsqueeze(0).to(self._device)
+
+        with torch.no_grad():
+            planes = self._model.forward_planes(batch, cameras)
+            vertices, faces, vertex_colors = self._model.extract_mesh(
+                planes,
+                mesh_resolution=self._resolution,
+                mesh_threshold=_MESH_THRESHOLD,
+                use_texture_map=False,
+            )
+
+        logger.info("reconstructed from photographs", extra={"views": _RIG_VIEWS})
+        surface = np.asarray(vertices, dtype=np.float32)
+        triangles = np.asarray(faces, dtype=np.int64)
+        baked = self._bake(planes, surface, triangles)
         return RawReconstruction(
             vertices=baked.vertices if baked else surface,
             faces=baked.faces if baked else triangles,
@@ -226,6 +314,8 @@ def build_instantmesh_reconstructor(
     diffusion_steps: int = _ZERO123PLUS_STEPS,
     texture_resolution: int = 0,
     texture_faces: int = 40_000,
+    prompt_from_label: bool = False,
+    multiview: bool = True,
 ) -> InstantMeshReconstructor:
     """Load both stages. Called from the lifespan block, before the port answers."""
     import torch
@@ -291,6 +381,8 @@ def build_instantmesh_reconstructor(
         diffusion_steps=diffusion_steps,
         texture_resolution=texture_resolution,
         texture_faces=texture_faces,
+        prompt_from_label=prompt_from_label,
+        multiview=multiview,
     )
 
 

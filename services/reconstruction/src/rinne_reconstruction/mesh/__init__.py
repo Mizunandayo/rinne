@@ -166,15 +166,24 @@ def _seat(mesh: trimesh.Trimesh) -> None:
 
 
 def measure(mesh: trimesh.Trimesh) -> MeshMeasurements:
-    """Read the properties the contract reports, after normalisation."""
+    """Read the properties the contract reports, after normalisation.
+
+    Watertightness is tested on a WELDED copy. UV mapping splits vertices along
+    every chart seam, so a textured mesh reports as open even when the surface it
+    describes is closed - and that would cost 30% of the confidence weight for
+    what is a rendering artefact, not a hole. Volume comes from the same copy,
+    because an open surface has no defined volume and mass is derived from it.
+    """
+    solid = mesh.copy()
+    solid.merge_vertices()
     extents = np.asarray(mesh.extents, dtype=np.float64)
     return MeshMeasurements(
         vertex_count=int(mesh.vertices.shape[0]),
         face_count=int(mesh.faces.shape[0]),
-        watertight=bool(mesh.is_watertight),
+        watertight=bool(solid.is_watertight),
         extent=(float(extents[0]), float(extents[1]), float(extents[2])),
-        volume_cubic_meters=abs(float(mesh.volume)),
-        boundary_edge_ratio=boundary_edge_ratio(mesh),
+        volume_cubic_meters=abs(float(solid.volume)),
+        boundary_edge_ratio=boundary_edge_ratio(solid),
     )
 
 

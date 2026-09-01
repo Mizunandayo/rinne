@@ -161,6 +161,7 @@ class Name1(StrEnum):
     stub = "stub"
     triposr = "triposr"
     instantmesh = "instantmesh"
+    trellis2 = "trellis2"
 
 
 class Device(StrEnum):
@@ -232,6 +233,7 @@ class Code(StrEnum):
     scale_assumed = "scale-assumed"
     confidence_uncalibrated = "confidence-uncalibrated"
     foreground_quality_unavailable = "foreground-quality-unavailable"
+    field_decisiveness_unavailable = "field-decisiveness-unavailable"
     images_ignored = "images-ignored"
     material_weak_signal = "material-weak-signal"
     low_face_count = "low-face-count"

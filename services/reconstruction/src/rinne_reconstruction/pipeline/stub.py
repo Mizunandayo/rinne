@@ -69,7 +69,14 @@ class StubReconstructor:
     def device(self) -> Device:
         return "cpu"
 
-    def reconstruct(self, image: Image.Image) -> RawReconstruction:
+    def reconstruct(
+        self,
+        image: Image.Image,
+        *,
+        label: str | None = None,
+        views: list[Image.Image] | None = None,
+    ) -> RawReconstruction:
+        del label, views
         seed = _seed_from(image)
         width, height = image.size
 

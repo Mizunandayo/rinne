@@ -137,3 +137,25 @@ def test_a_baked_atlas_survives_normalisation() -> None:
     assert out.faces.shape[0] == faces.shape[0]
     assert out.visual.uv.shape[0] == vertices.shape[0]
     assert float(np.max(out.extents)) == pytest.approx(TARGET_METERS, rel=1e-3)
+
+
+def test_a_seam_split_surface_still_reports_watertight() -> None:
+    """UV mapping duplicates vertices along every chart seam. The surface it
+    describes is unchanged, so measuring the split copy would report a hole that
+    does not exist - and watertightness is 30% of the confidence weight."""
+    from rinne_reconstruction.mesh import measure
+
+    sphere = trimesh.creation.icosphere(subdivisions=3)
+    assert sphere.is_watertight
+
+    # Every face gets its own vertices: geometrically identical, topologically open.
+    split = trimesh.Trimesh(
+        vertices=sphere.vertices[sphere.faces].reshape(-1, 3),
+        faces=np.arange(sphere.faces.size, dtype=np.int64).reshape(-1, 3),
+        process=False,
+    )
+    assert not split.is_watertight
+
+    reported = measure(split)
+    assert reported.watertight is True
+    assert reported.volume_cubic_meters == pytest.approx(sphere.volume, rel=1e-6)

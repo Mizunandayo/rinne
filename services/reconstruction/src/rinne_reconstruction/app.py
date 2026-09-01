@@ -36,6 +36,19 @@ def build_pipeline(settings: Settings) -> Reconstructor:
     if settings.pipeline_name == "stub":
         return StubReconstructor(resolution=settings.stub_resolution)
 
+    if settings.pipeline_name == "trellis2":
+        from rinne_reconstruction.pipeline.trellis2 import build_trellis2_reconstructor
+
+        return build_trellis2_reconstructor(
+            weights_dir=settings.trellis2_weights_dir,
+            segmentation_model_path=settings.segmentation_model_path,
+            version=settings.trellis2_version,
+            foreground_ratio=settings.triposr_foreground_ratio,
+            texture_size=settings.trellis2_texture_size,
+            decimation_target=settings.trellis2_decimation_target,
+            remesh=settings.trellis2_remesh,
+        )
+
     if settings.pipeline_name == "instantmesh":
         from rinne_reconstruction.pipeline.instantmesh import build_instantmesh_reconstructor
 
@@ -50,6 +63,8 @@ def build_pipeline(settings: Settings) -> Reconstructor:
             diffusion_steps=settings.instantmesh_diffusion_steps,
             texture_resolution=settings.texture_resolution,
             texture_faces=settings.texture_target_faces,
+            prompt_from_label=settings.instantmesh_prompt_from_label,
+            multiview=settings.instantmesh_multiview,
         )
 
     # Imported here rather than at module scope: torch and the vendored TripoSR

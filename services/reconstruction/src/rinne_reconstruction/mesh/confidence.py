@@ -29,20 +29,50 @@ Band = Literal["low", "medium", "high"]
 class ConfidenceWeights:
     """The weights used for one response. They must sum to 1.0 at 4dp."""
 
-    field_decisiveness: float
     watertightness: float
     volume_plausibility: float
+    field_decisiveness: float | None = None
     foreground_quality: float | None = None
 
     def as_payload(self) -> dict[str, float]:
         payload = {
-            "fieldDecisiveness": self.field_decisiveness,
             "watertightness": self.watertightness,
             "volumePlausibility": self.volume_plausibility,
         }
+        if self.field_decisiveness is not None:
+            payload["fieldDecisiveness"] = self.field_decisiveness
         if self.foreground_quality is not None:
             payload["foregroundQuality"] = self.foreground_quality
         return payload
+
+    def without_field_decisiveness(self) -> ConfidenceWeights:
+        """Rescale the rest so they still sum to exactly 1.0 at 4dp.
+
+        A pipeline that reports no density field must not be SCORED zero for it:
+        that reads "not measured" as "worst possible", and it is 45% of the
+        weight. The component is dropped and a notice says so, which is the same
+        treatment foregroundQuality gets when there is no segmentation.
+        """
+        if self.field_decisiveness is None:
+            return self
+
+        remaining = 1.0 - self.field_decisiveness
+        if remaining <= 0.0:
+            raise ValueError("the fieldDecisiveness weight leaves nothing to rescale")
+
+        water = round(self.watertightness / remaining, PRECISION)
+        fore = (
+            None
+            if self.foreground_quality is None
+            else round(self.foreground_quality / remaining, PRECISION)
+        )
+        used = water + (fore or 0.0)
+        return ConfidenceWeights(
+            watertightness=water,
+            volume_plausibility=round(1.0 - used, PRECISION),
+            field_decisiveness=None,
+            foreground_quality=fore,
+        )
 
     def without_foreground_quality(self) -> ConfidenceWeights:
         """Rescale the remaining three so they still sum to exactly 1.0 at 4dp.
@@ -57,12 +87,16 @@ class ConfidenceWeights:
         if remaining <= 0.0:
             raise ValueError("the foregroundQuality weight leaves nothing to rescale")
 
-        field = round(self.field_decisiveness / remaining, PRECISION)
+        field = (
+            None
+            if self.field_decisiveness is None
+            else round(self.field_decisiveness / remaining, PRECISION)
+        )
         water = round(self.watertightness / remaining, PRECISION)
         return ConfidenceWeights(
-            field_decisiveness=field,
             watertightness=water,
-            volume_plausibility=round(1.0 - field - water, PRECISION),
+            volume_plausibility=round(1.0 - (field or 0.0) - water, PRECISION),
+            field_decisiveness=field,
         )
 
 

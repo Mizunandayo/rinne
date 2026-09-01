@@ -1,0 +1,23 @@
+# Probe only. No `images:` key, so nothing is pushed to Artifact Registry.
+# Two hours because four CUDA extensions compile here; the default ten minutes
+# and even the hour the service build uses are both far short.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args:
+      - build
+      - -f
+      - infra/probe/trellis2.Dockerfile
+      - -t
+      - trellis2-probe:local
+      - .
+    timeout: "7200s"
+
+# E2_HIGHCPU_32 was quota-rejected in asia-southeast1 in August, so this asks
+# for the 8 that was granted. nvcc is the bottleneck and it parallelises.
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 200
+
+timeout: "7200s"

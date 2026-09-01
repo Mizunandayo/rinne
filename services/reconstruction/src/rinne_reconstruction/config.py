@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     min_faces: int = Field(default=100, ge=0, le=100_000)
 
     # Pipeline
-    pipeline_name: Literal["stub", "triposr", "instantmesh"] = "stub"
+    pipeline_name: Literal["stub", "triposr", "instantmesh", "trellis2"] = "stub"
     stub_resolution: int = Field(default=64, ge=16, le=192)
 
     # Baked into the image by the Dockerfile's source and weights stages.
@@ -100,10 +100,30 @@ class Settings(BaseSettings):
     instantmesh_commit_sha: str = Field(default="", max_length=64)
     instantmesh_marching_cubes_resolution: int = Field(default=256, ge=32, le=512)
     instantmesh_diffusion_steps: int = Field(default=75, ge=8, le=200)
-    # 0 disables and colour falls back to one sample per vertex. The atlas
-    # carries the detail, so the geometry under it can be far lighter.
-    texture_resolution: int = Field(default=1024, ge=0, le=4096)
+    # OFF by default, and the default is what matters: deploy-all.ps1 uses
+    # --set-env-vars, which replaces the whole environment, so anything kept on
+    # only by a live override comes back on at the next deploy. Baking an atlas
+    # splits vertices at chart seams, which makes the surface topologically open
+    # and drops watertightness to zero - and mass is derived from volume, which
+    # needs a closed surface. A prettier mesh that cannot be weighed is worth
+    # less to a physics system than a plainer one that can.
+    texture_resolution: int = Field(default=0, ge=0, le=4096)
     texture_target_faces: int = Field(default=40_000, ge=0, le=500_000)
+    # Feed ReconstructionRequest.label to Zero123++ as a prompt. Off by
+    # default: the model was fine-tuned on an empty one.
+    instantmesh_prompt_from_label: bool = False
+    # Six photographs at the rig's own angles go straight to the sparse-view
+    # reconstructor, and the view-synthesis stage is skipped entirely.
+    instantmesh_multiview: bool = True
+
+    # TRELLIS.2. Baked by the Dockerfile like the others, and read not set.
+    # decimation_target and texture_size are what the asset ships with: the
+    # model remeshes and unwraps internally, so these are its knobs, not ours.
+    trellis2_weights_dir: str = "/opt/trellis2/weights"
+    trellis2_version: str = Field(default="", max_length=64)
+    trellis2_texture_size: int = Field(default=2048, ge=256, le=4096)
+    trellis2_decimation_target: int = Field(default=200_000, ge=1_000, le=2_000_000)
+    trellis2_remesh: bool = True
     segmentation_model_path: str = Field(
         default="/opt/u2netp/u2netp.onnx", min_length=1, max_length=256
     )

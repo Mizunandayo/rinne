@@ -333,7 +333,14 @@ class _SegmentingStub:
     def device(self) -> Device:
         return self._inner.device
 
-    def reconstruct(self, image: Image.Image) -> RawReconstruction:
+    def reconstruct(
+        self,
+        image: Image.Image,
+        *,
+        label: str | None = None,
+        views: list[Image.Image] | None = None,
+    ) -> RawReconstruction:
+        del label, views
         return replace(self._inner.reconstruct(image), foreground=self._foreground)
 
 

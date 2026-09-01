@@ -1170,7 +1170,8 @@ export const reconstructionResultSchema = {
           "enum": [
             "stub",
             "triposr",
-            "instantmesh"
+            "instantmesh",
+            "trellis2"
           ]
         },
         "version": {
@@ -1289,6 +1290,7 @@ export const reconstructionResultSchema = {
             "scale-assumed",
             "confidence-uncalibrated",
             "foreground-quality-unavailable",
+            "field-decisiveness-unavailable",
             "images-ignored",
             "material-weak-signal",
             "low-face-count",

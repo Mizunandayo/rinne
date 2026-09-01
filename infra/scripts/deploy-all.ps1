@@ -106,6 +106,13 @@ $config = @{
             # result rolls back in a minute without a rebuild.
             PIPELINE_NAME = 'instantmesh'
             INSTANTMESH_COMMIT_SHA = '08822c52fdc399b93ea00e4fa9e596344ed52ccc'
+            # --set-env-vars below REPLACES the environment, so every value that
+            # must survive a deploy belongs here rather than in a live override.
+            INSTANTMESH_MARCHING_CUBES_RESOLUTION = '384'
+            MESH_TARGET_FACES  = '220000'
+            MESH_SMOOTHING_ITERATIONS = '6'
+            TEXTURE_RESOLUTION = '0'
+            MAX_IMAGES         = '6'
         }
     }
     agent = @{

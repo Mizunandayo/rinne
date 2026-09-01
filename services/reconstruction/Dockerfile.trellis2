@@ -1,0 +1,165 @@
+# syntax=docker/dockerfile:1.7
+# docker build -f services/reconstruction/Dockerfile.trellis2 -t rinne-reconstruction:trellis2 .
+#
+# A SEPARATE image from Dockerfile, deliberately. TRELLIS.2 needs CUDA 12.4, a
+# compiler, and four extensions built from source, which means a different base
+# and a different Python. Folding that into the working image would put the
+# TripoSR and InstantMesh pipelines - both currently serving - behind a build
+# that has never succeeded. This one can fail without taking them with it.
+#
+# Five stages: TRELLIS.2 source, weights, u2netp, compiled deps, runtime. ~30GB.
+
+# ── 1. TRELLIS.2 at a pinned commit ─────────────────────────────────────
+FROM python:3.11-slim-bookworm AS source
+ARG TRELLIS2_SHA=75fbf0183001ed9876c8dbb35de6b68552ee08bd
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /clone
+# --recursive: the CUDA extensions are submodules, not directories in the tree.
+RUN git clone -q --recursive https://github.com/microsoft/TRELLIS.2.git . \
+ && git checkout -q "${TRELLIS2_SHA}" \
+ && git submodule update --init --recursive -q \
+ && test "$(git rev-parse HEAD)" = "${TRELLIS2_SHA}" \
+ && mkdir -p /opt/trellis2 \
+ && cp -r . /opt/trellis2/src
+
+# ── 2. Weights, pinned by revision ──────────────────────────────────────
+FROM python:3.11-slim-bookworm AS weights
+ARG TRELLIS2_HF_REVISION=af44b45f2e35a493886929c6d786e563ec68364d
+ARG U2NETP_URL=https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
+ARG U2NETP_SHA256=309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8
+ARG HUGGINGFACE_HUB_VERSION=0.36.2
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir "huggingface-hub==${HUGGINGFACE_HUB_VERSION}" \
+ && python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download(repo_id='microsoft/TRELLIS.2-4B', revision='${TRELLIS2_HF_REVISION}', local_dir='/opt/trellis2/weights')" \
+ && test -d /opt/trellis2/weights/ckpts
+
+RUN mkdir -p /opt/u2netp \
+ && curl -fsSL -o /opt/u2netp/u2netp.onnx "${U2NETP_URL}" \
+ && echo "${U2NETP_SHA256}  /opt/u2netp/u2netp.onnx" | sha256sum -c -
+
+# ── 3. The compiled half ────────────────────────────────────────────────
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS build
+# Ada Lovelace. The builder has no GPU, so the target has to be STATED or nvcc
+# emits nothing and every extension fails at import rather than at build.
+ENV DEBIAN_FRONTEND=noninteractive \
+    TORCH_CUDA_ARCH_LIST="8.9" \
+    FORCE_CUDA=1 \
+    # 2, not 8. Each nvcc process can take a couple of gigabytes, and eight
+    # of them killed an 8GB builder outright - Cloud Build reports that as
+    # INTERNAL_ERROR, which looks like infrastructure rather than sizing.
+    MAX_JOBS=2 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3.11 python3.11-dev python3.11-venv python3-pip \
+      git ninja-build build-essential ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN python3.11 -m venv /opt/venv \
+ && pip install --upgrade pip wheel setuptools packaging ninja
+
+# torch alone first: every extension below compiles against its headers.
+RUN pip install torch==2.6.0 torchvision==0.21.0 \
+      --index-url https://download.pytorch.org/whl/cu124
+
+# xformers rather than flash-attn. Upstream offers it as the alternative
+# backend, it ships a wheel, and flash-attn is the worst compile in the set.
+RUN pip install xformers==0.0.35
+
+COPY --from=source /opt/trellis2/src /opt/trellis2/src
+WORKDIR /opt/trellis2/src
+
+# setup.sh's --basic, minus gradio and tensorboard: this serves an API, not a
+# demo UI, and gradio alone is hundreds of megabytes. utils3d is pinned upstream.
+RUN pip install \
+      imageio imageio-ffmpeg tqdm easydict opencv-python-headless ninja \
+      trimesh transformers pandas lpips zstandard kornia timm \
+ && pip install \
+      "git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8"
+
+# EVERY extension takes --no-build-isolation, exactly as setup.sh does it: each
+# one compiles against the torch already in this venv, and an isolated build
+# would fetch a second torch and link against the wrong headers. That is the
+# same mistake that killed the TRELLIS 1 build in August.
+#
+# One layer each, so a failure names the extension rather than collapsing five
+# possible causes into a single red build.
+RUN git clone -q --recursive https://github.com/JeffreyXiang/CuMesh.git /tmp/ext/CuMesh \
+ && pip install -v /tmp/ext/CuMesh --no-build-isolation
+
+RUN git clone -q --recursive https://github.com/JeffreyXiang/FlexGEMM.git /tmp/ext/FlexGEMM \
+ && pip install -v /tmp/ext/FlexGEMM --no-build-isolation
+
+RUN git clone -q -b v0.4.0 https://github.com/NVlabs/nvdiffrast.git /tmp/ext/nvdiffrast \
+ && pip install -v /tmp/ext/nvdiffrast --no-build-isolation
+
+RUN git clone -q -b renderutils https://github.com/JeffreyXiang/nvdiffrec.git /tmp/ext/nvdiffrec \
+ && pip install -v /tmp/ext/nvdiffrec --no-build-isolation
+
+# o-voxel is a hyphenated directory in the repo root, not a submodule.
+RUN test -d o-voxel \
+ && cp -r o-voxel /tmp/ext/o-voxel \
+ && pip install -v /tmp/ext/o-voxel --no-build-isolation
+
+RUN pip install -v . --no-build-isolation
+
+# What the service itself needs, on top of the model.
+RUN pip install \
+      "fastapi==0.121.2" "uvicorn[standard]==0.42.0" "pydantic==2.13.1" \
+      "pydantic-settings==2.13.0" "python-multipart==0.0.21" "anyio==4.12.0" \
+      "httpx2==0.30.1" "pillow==12.1.0" "numpy==2.1.3" \
+      "onnxruntime==1.29.0" "fast-simplification==0.2.0" "scikit-image==0.26.0"
+
+# A wheel that builds but will not load is worth nothing. Fail here, in the
+# build, rather than on the first request behind a startup probe.
+RUN python -c "\
+import torch, o_voxel, flexgemm, cumesh, nvdiffrast.torch, trellis2; \
+print('torch', torch.__version__, 'cuda', torch.version.cuda); \
+print('every TRELLIS.2 extension imports')"
+
+# ── 4. Runtime ──────────────────────────────────────────────────────────
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONFAULTHANDLER=1 \
+    PORT=8080 \
+    HF_HUB_OFFLINE=1 \
+    OPENCV_IO_ENABLE_OPENEXR=1 \
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+    PIPELINE_NAME=trellis2 \
+    TRELLIS2_WEIGHTS_DIR=/opt/trellis2/weights \
+    SEGMENTATION_MODEL_PATH=/opt/u2netp/u2netp.onnx
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3.11 libgomp1 libgl1 libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 rinne \
+ && useradd -u 10001 -g rinne -M -s /usr/sbin/nologin rinne
+
+COPY --from=build   --chown=10001:10001 /opt/venv           /opt/venv
+COPY --from=source  --chown=10001:10001 /opt/trellis2/src   /opt/trellis2/src
+COPY --from=weights --chown=10001:10001 /opt/trellis2/weights /opt/trellis2/weights
+COPY --from=weights --chown=10001:10001 /opt/u2netp         /opt/u2netp
+
+WORKDIR /app
+COPY --chown=10001:10001 services/reconstruction/src /app/src
+ENV PYTHONPATH=/app/src
+
+USER 10001:10001
+EXPOSE 8080
+CMD ["python", "-m", "uvicorn", "rinne_reconstruction.app:create_app", \
+     "--factory", "--host", "0.0.0.0", "--port", "8080"]

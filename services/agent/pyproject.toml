@@ -9,7 +9,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi==0.141.1",
     "uvicorn[standard]==0.52.4",
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     # The Agent Development Kit. Measured against the gates before it was
     # adopted: +38 transitive packages, +50MB in the runtime image, and

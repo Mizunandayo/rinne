@@ -8,7 +8,7 @@
 
 
 # 1. TripoSR source, at a pinned commit
-FROM python:3.12.14-slim-bookworm AS source
+FROM python:3.14.6-slim-bookworm AS source
 ARG TRIPOSR_SHA=107cefdc244c39106fa830359024f6a2f1c78871
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
@@ -26,7 +26,7 @@ RUN git clone -q --filter=blob:none --no-checkout \
 
 # 1b. InstantMesh source, at a pinned commit. src/ and configs/ only: the repo
 # also carries examples, assets and the training rig, none of which run here.
-FROM python:3.12.14-slim-bookworm AS instantmesh-source
+FROM python:3.14.6-slim-bookworm AS instantmesh-source
 ARG INSTANTMESH_SHA=08822c52fdc399b93ea00e4fa9e596344ed52ccc
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
@@ -43,7 +43,7 @@ RUN git clone -q --filter=blob:none --no-checkout \
  && test -f /opt/instantmesh/src/configs/instant-nerf-large.yaml
 
 # 2. Weights, every one of them sha256-verified
-FROM python:3.12.14-slim-bookworm AS weights
+FROM python:3.14.6-slim-bookworm AS weights
 ARG TRIPOSR_HF_REVISION=5b521936b01fbe1890f6f9baed0254ab6351c04a
 ARG TRIPOSR_CONFIG_SHA256=74ca708ce086bf68e97709ea6b3d91f14717921c04691e84043f0eb8fcc68e62
 ARG TRIPOSR_CKPT_SHA256=429e2c6b22a0923967459de24d67f05962b235f79cde6b032aa7ed2ffcd970ee
@@ -109,7 +109,7 @@ snapshot_download(repo_id='facebook/dino-vitb16', revision='${DINO_REVISION}', a
  && test -f "${HF_HOME}/hub/models--facebook--dino-vitb16/snapshots/${DINO_REVISION}/pytorch_model.bin"
 
 # 3. Python dependencies
-FROM python:3.12.14-slim-bookworm AS build
+FROM python:3.14.6-slim-bookworm AS build
 # Pinned uv binary, not the uv+python image: uv.lock is revision 3, and one shared
 # python image keeps the venv's interpreter symlink valid.
 COPY --from=ghcr.io/astral-sh/uv:0.10.10 /uv /uvx /usr/local/bin/
@@ -128,7 +128,7 @@ COPY services/reconstruction/src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --group gpu
 
-FROM python:3.12.14-slim-bookworm AS runtime
+FROM python:3.14.6-slim-bookworm AS runtime
 # numpy/scipy/skimage wheels link the system libgomp instead of vendoring it.
 # Without this the container starts, then dies on the first `import skimage`.
 RUN apt-get update \
